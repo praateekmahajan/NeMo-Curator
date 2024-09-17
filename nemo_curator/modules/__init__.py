@@ -33,9 +33,14 @@ from .task import TaskDecontamination
 # GPU packages
 LSH = gpu_only_import_from("nemo_curator.modules.fuzzy_dedup", "LSH")
 MinHash = gpu_only_import_from("nemo_curator.modules.fuzzy_dedup", "MinHash")
-FuzzyDuplicates = gpu_only_import_from(
-    "nemo_curator.modules.fuzzy_dedup", "FuzzyDuplicates"
-)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nemo_curator.modules.fuzzy_dedup import FuzzyDuplicates
+else:
+    FuzzyDuplicates = gpu_only_import_from(
+        "nemo_curator.modules.fuzzy_dedup", "FuzzyDuplicates"
+    )
 BucketsToEdges = gpu_only_import_from(
     "nemo_curator.modules.fuzzy_dedup", "BucketsToEdges"
 )

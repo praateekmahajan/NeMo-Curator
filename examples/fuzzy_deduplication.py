@@ -29,14 +29,19 @@ def pre_imports():
 
 def main(args):
 
-    dataset_dir = "/path/to/dataset"
-    log_dir = "./"
-    cache_dir = "./fuzzy_cache"
-    output_dir = "./output"
+    dataset_dir = "/raid/prospector-lm/clean/tinystories_train"
+    log_dir = "/raid/praateekm/debugging/20240917"
+    cache_dir = "/raid/praateekm/debugging/20240917/fuzzy_cache"
+    output_dir = "/raid/praateekm/debugging/20240917/output"
+
+    # dataset_dir = "/raid/prospector-lm/cleaned_exact_dedup_all_cc"
+    # log_dir = "/raid/praateekm/debugging"
+    # cache_dir = "/raid/praateekm/debugging/fuzzy_cache"
+    # output_dir = "/raid/praateekm/debugging/output"
     dataset_id_field = "id"
     dataset_text_field = "text"
 
-    filetype = "parquet"
+    filetype = "jsonl"
 
     # Fuzzy dup calculation only supports the cuDF/GPU backend
     backend = "cudf"
@@ -62,6 +67,7 @@ def main(args):
             input_dataset = DocumentDataset.read_json(
                 dataset_dir,
                 backend=backend,
+                files_per_partition=20,
             )
 
         fuzzy_dedup_config = FuzzyDuplicatesConfig(
@@ -77,6 +83,7 @@ def main(args):
             false_positive_check=True,
             num_anchors=2,
             jaccard_threshold=0.8,
+            bucket_mapping_blocksize=512,
         )
         fuzzy_dup = FuzzyDuplicates(logger=log_dir, config=fuzzy_dedup_config)
         duplicates = fuzzy_dup(dataset=input_dataset)

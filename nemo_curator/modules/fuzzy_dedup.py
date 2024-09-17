@@ -14,13 +14,16 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import time
 import warnings
+from abc import abstractmethod
 from datetime import datetime
 from itertools import pairwise
-from typing import List, Tuple, Union
+from pydoc import Doc
+from typing import List, Optional, Tuple, Union
 
 import cudf
 import cugraph.dask as dcg
@@ -66,7 +69,67 @@ from nemo_curator.utils.fuzzy_dedup_utils.shuffle_utils import (
 )
 
 
-class MinHash:
+class BaseModule:
+    def __init__(
+        self,
+        class_name: str,
+        logger: Union[logging.LoggerAdapter, str],
+        profile_dir: Optional[str] = None,
+        cache_dir: Optional[str] = None,
+    ):
+
+        if class_name is not None and cache_dir is None:
+            msg = "class_name should be specified if cache_file_path is defined."
+            raise ValueError(msg)
+
+        self.write_path = (
+            os.path.join(cache_dir, class_name) if self.cache_dir else None
+        )
+        self.profile_dir = profile_dir
+        self.class_name = class_name
+
+        if isinstance(logger, str):
+            self._logger = create_logger(
+                rank=0,
+                log_file=os.path.join(logger, f"{self.class_name}.log"),
+                name=self.class_name,
+            )
+        else:
+            self._logger = logger
+
+        if cache_dir is None and profile_dir is not None:
+            self._logger.warning(
+                "cache_dir for intermediate outputs is required to generate profiles"
+            )
+
+    def _df_impl(self, df: cudf.DataFrame) -> cudf.DataFrame:
+        msg = f"{self.__class__.__name__} isn't implemented without write"
+        raise NotImplementedError(msg)
+
+    def _df_impl_with_write(self, df: cudf.DataFrame) -> None:
+        result = self._df_impl(df)
+        result.to_parquet(self.write_path, write_index=False, overwrite=True)
+
+    def __call__(self, dataset: DocumentDataset) -> DocumentDataset:
+        if not self.write_path:
+            return DocumentDataset(self._df_impl(dataset.df))
+        else:
+            t0 = time.time()
+            with performance_report_if(
+                self.profile_dir,
+                f"{self.class_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+            ):
+                _ = self._call_impl_with_write(dataset.df)
+
+            self._logger.info(
+                f"Time taken for {self.class_name} : {time.time() - t0}s at {self.write_path}"
+            )
+
+            out_df = dask_cudf.read_parquet(self.write_path, split_row_groups=False)
+            return DocumentDataset(out_df)
+
+
+class MinHash(BaseModule):
     """
     Computes minhash signatures of a document corpus
     """
@@ -80,8 +143,8 @@ class MinHash:
         logger: Union[logging.LoggerAdapter, str] = "./",
         id_field: str = "id",
         text_field: str = "text",
-        profile_dir: str = None,
-        cache_dir: str = None,
+        profile_dir: Optional[str] = None,
+        cache_dir: Optional[str] = None,
     ):
         """
         Parameters
@@ -98,6 +161,12 @@ class MinHash:
         cache_dir: str, Default None
           If specified, will compute & write id,minhash pairs to directory
         """
+        super().__init__(
+            class_name="min_hash",
+            logger=logger,
+            profile_dir=profile_dir,
+            cache_dir=cache_dir,
+        )
         self.num_hashes = num_hashes
         self.char_ngram = char_ngrams
         self.seeds = self.generate_seeds(n_seeds=self.num_hashes, seed=seed)
@@ -105,28 +174,12 @@ class MinHash:
         self.id_field = id_field
         self.text_field = text_field
 
-        if cache_dir is None and profile_dir is not None:
-            warnings.warn(
-                "cache_dir for intermediate outputs is required to generate profiles"
-            )
-        self.cache_dir = cache_dir
-        self.profile_dir = profile_dir
-
-        if isinstance(logger, str):
-            self._logger = create_logger(
-                rank=0,
-                log_file=os.path.join(logger, "Minhash.log"),
-                name="Minhash",
-            )
-        else:
-            self._logger = logger
-
     def generate_seeds(self, n_seeds: int = 260, seed: int = 0) -> np.ndarray:
         """
         Generate seeds for all minhash permutations based on the given seed.
         """
         gen = np.random.RandomState(seed)
-        return gen.randint(0, 1e6, size=n_seeds)
+        return gen.randint(0, 1_000_000, size=n_seeds)
 
     def minhash32(
         self, ser: cudf.Series, seeds: np.ndarray, char_ngram: int
@@ -136,8 +189,8 @@ class MinHash:
         """
         if not isinstance(ser, cudf.Series):
             raise TypeError("Expected data of type cudf.Series")
-        seeds = cudf.Series(seeds, dtype="uint32")
-        return ser.str.minhash(seeds=seeds, width=char_ngram)
+        seeds_cu = cudf.Series(seeds, dtype="uint32")
+        return ser.str.minhash(seeds=seeds_cu, width=char_ngram)
 
     def minhash64(
         self, ser: cudf.Series, seeds: np.ndarray, char_ngram: int
@@ -147,10 +200,10 @@ class MinHash:
         """
         if not isinstance(ser, cudf.Series):
             raise TypeError("Expected data of type cudf.Series")
-        seeds = cudf.Series(seeds, dtype="uint64")
-        return ser.str.minhash64(seeds=seeds, width=char_ngram)
+        seeds_cu = cudf.Series(seeds, dtype="uint64")
+        return ser.str.minhash64(seeds=seeds_cu, width=char_ngram)
 
-    def __call__(self, dataset: DocumentDataset) -> Union[str, DocumentDataset]:
+    def _df_impl(self, df: cudf.DataFrame) -> cudf.DataFrame:
         """
         Computes the MinHash Signatures for a given dataset.
         Parameters
@@ -161,34 +214,13 @@ class MinHash:
         -------
         DocumentDataset containing IDs of all documents and the corresponding MinHash Signature
         """
-        result = dataset.df[[self.id_field]]
-        result["_minhash_signature"] = dataset.df[self.text_field].map_partitions(
+        result = df[[self.id_field]]
+        result["_minhash_signature"] = df[self.text_field].map_partitions(
             self.minhash_method,
             seeds=self.seeds,
             char_ngram=self.char_ngram,
         )
-
-        if self.cache_dir is None:
-            return DocumentDataset(result)
-
-        t0 = time.time()
-        self._logger.info("Starting execution for Minhashes")
-        write_path = os.path.join(self.cache_dir, "_minhashes.parquet")
-        if os.path.exists(write_path):
-            warnings.warn(
-                f"Output path {write_path} already exists and will be overwritten"
-            )
-        with performance_report_if(
-            self.profile_dir,
-            f"minhash-profile-{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-        ):
-            result.to_parquet(write_path, write_index=False, overwrite=True)
-        self._logger.info(
-            f"Minhash signature computation for dataset took {time.time() - t0}s complete at {write_path}"  # noqa:E501
-        )
-        return DocumentDataset(
-            dask_cudf.read_parquet(write_path, blocksize="2GB", aggregate_files=True)
-        )
+        return result
 
 
 class LSH:
@@ -205,7 +237,7 @@ class LSH:
         logger: Union[logging.LoggerAdapter, str] = "./",
         id_fields: Union[str, list] = "id",
         minhash_field: str = "_minhash_signature",
-        profile_dir: str = None,
+        profile_dir: Optional[str] = None,
     ):
         """
         Parameters
@@ -219,11 +251,23 @@ class LSH:
           Larger values process larger batches by processing multiple bands
           but might lead to memory pressures and related errors.
         logger: Existing logger to log to, or a path to a log directory.
-        id_field: Columns in the Dataset denoting document ID.
+        id_fields: Columns in the Dataset denoting document ID.
         minhash_field: Column in the Dataset denoting minhash signature.
         profile_dir: str, Default None
           If specified directory to write dask profile
         """
+
+        if cache_dir is None:
+            raise ValueError(
+                "cache_dir for intermediate outputs is required for this LSH"
+            )
+
+        super(BaseModule).__init__(
+            class_name="lsh",
+            logger=logger,
+            profile_dir=profile_dir,
+            cache_dir=cache_dir,
+        )
         self.num_hashes = num_hashes
         self.num_buckets = num_buckets
         self.id_fields = [id_fields] if isinstance(id_fields, str) else id_fields
@@ -232,22 +276,6 @@ class LSH:
         self.bucket_ranges = self._generate_bucket_ranges(
             self.num_buckets, self.num_hashes
         )
-
-        if cache_dir is None:
-            raise ValueError(
-                "cache_dir for intermediate outputs is required for this stage"
-            )
-        self.cache_dir = cache_dir
-        self.profile_dir = profile_dir
-
-        if isinstance(logger, str):
-            self._logger = create_logger(
-                rank=0,
-                log_file=os.path.join(logger, "LSH.log"),
-                name="LSH",
-            )
-        else:
-            self._logger = logger
 
     def _generate_bucket_ranges(
         self, num_buckets: int, num_hashes: int
@@ -309,16 +337,13 @@ class LSH:
         bucket_ddf["_bucket_id"] = bucket_ddf["_bucket_id"].astype(np.uint64)
         return (bucket_ddf, end_bucket_id)
 
-    def _minhash_to_bucket_meta(
-        self, df: dask_cudf.DataFrame
-    ) -> Tuple[cudf.DataFrame, int]:
+    def _minhash_to_bucket_meta(self, df: dask_cudf.DataFrame) -> cudf.DataFrame:
         meta = df._meta_nonempty[self.id_fields]
         meta[self.minhash_field] = [np.ones(self.num_hashes)] * len(meta)
         return self.minhash_to_buckets(meta, self.bucket_ranges)
 
-    def lsh(
+    def _df_impl_with_write(
         self,
-        write_path: str,
         df: dask_cudf.DataFrame,
     ) -> None:
         """
@@ -360,30 +385,15 @@ class LSH:
             df2 = df2.map_partitions(lambda x: x.astype(dtypes))
 
             if i == 0:
-                if os.path.exists(write_path):
-                    warnings.warn(
-                        f"Output path {write_path} already exists and will be overwritten"
+                if os.path.exists(self.write_path):
+                    self._logger.warning(
+                        f"Output path {self.write_path} already exists and will be overwritten"
                     )
-                df2.to_parquet(write_path, write_index=False, overwrite=True)
+                df2.to_parquet(self.write_path, write_index=False, overwrite=True)
             else:
-                df2.to_parquet(write_path, write_index=False, append=True)
+                df2.to_parquet(self.write_path, write_index=False, append=True)
 
             self._logger.info(f"Wrote data for buckets: {value_vars}")
-
-    def __call__(self, dataset: DocumentDataset) -> DocumentDataset:
-        df = dataset.df
-
-        write_path = os.path.join(self.cache_dir, "_buckets.parquet")
-        t0 = time.time()
-        with performance_report_if(
-            self.profile_dir,
-            f"lsh-profile-{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-        ):
-            self.lsh(write_path=write_path, df=df)
-        self._logger.info(f"Computing and writing buckets took {time.time() - t0} s")
-
-        buckets_df = dask_cudf.read_parquet(write_path, split_row_groups=False)
-        return DocumentDataset(buckets_df)
 
 
 class FuzzyDuplicates:
@@ -441,12 +451,15 @@ class FuzzyDuplicates:
                 text_field=self.config.text_field,
                 logger=self._logger,
                 num_anchors=self.config.num_anchors,
+                cache_dir=self.config.cache_dir,
+                profile_dir=self.config.profile_dir,
             )
             self.jaccard_shuffle = _Shuffle(
                 id_fields=[self.config.id_field],
                 text_field=self.config.text_field,
                 logger=self._logger,
                 profile_dir=self.config.profile_dir,
+                cache_dir=self.config.cache_dir,
             )
             self.jaccard_compute = JaccardSimilarity(
                 id_field=self.config.id_field,
@@ -456,12 +469,16 @@ class FuzzyDuplicates:
                     f"anchor_{i}_{self.config.id_field}"
                     for i in range(self.config.num_anchors)
                 ],
+                logger=self._logger,
+                cache_dir=self.config.cache_dir,
+                profile_dir=self.config.profile_dir,
             )
         else:
             self.buckets_to_edges = BucketsToEdges(
                 cache_dir=self.config.cache_dir,
                 id_fields=self.config.id_field,
                 logger=self._logger,
+                profile_dir=self.config.profile_dir,
             )
 
         jaccard_pairs_fname = (
@@ -475,6 +492,8 @@ class FuzzyDuplicates:
             id_column=self.config.id_field,
             convert_str_ids=False,
             jaccard_threshold=self.config.jaccard_threshold,
+            logger=self._logger,
+            profile_dir=self.config.profile_dir,
         )
 
     def __call__(self, dataset: DocumentDataset):
@@ -500,15 +519,7 @@ class FuzzyDuplicates:
         if self.config.false_positive_check:
             # Map buckets to lower cardinality distribution
             print(f"Stage{stage_num} (False Positive Check): Starting Map_Buckets")
-            ddf_mapped_buckets_w_anchors = self.map_buckets.map_buckets_with_anchors(
-                documents_df=dataset.df, buckets_df=buckets_df.df
-            )
-            mapped_buckets_w_anchors_path = os.path.join(
-                self.config.cache_dir, "anchor_docs_with_bk.parquet"
-            )
-            ddf_mapped_buckets_w_anchors.to_parquet(
-                mapped_buckets_w_anchors_path, write_index=False
-            )
+            self.map_buckets(documents_df=dataset.df, buckets_df=buckets_df.df)
             print(f"Stage{stage_num} (False Postive Check): Map_Buckets Complete!")
             stage_num += 1
 
@@ -574,7 +585,7 @@ class BucketsToEdges:
 
     def __init__(
         self,
-        cache_dir: str = None,
+        cache_dir: Optional[str] = None,
         id_fields: Union[list, str] = "id",
         str_id_name: str = "id",
         bucket_field: str = "_bucket_id",
@@ -684,7 +695,7 @@ class BucketsToEdges:
         )
 
 
-class _MapBuckets:
+class _MapBuckets(BaseModule):
     """
     buckets to a logical partition by using a modified bin packing algorithm.
     Combines buckets generated from LSH (typically high cardinality)
@@ -701,6 +712,8 @@ class _MapBuckets:
         bucket_field: str = "_bucket_id",
         num_anchors: int = 2,
         logger: Union[logging.LoggerAdapter, str] = "./",
+        cache_dir: Optional[str] = None,
+        profile_dir: Optional[str] = None,
     ):
         """
         id_fields: list or str
@@ -714,14 +727,12 @@ class _MapBuckets:
         self.text_field = text_field
         self.num_anchors = num_anchors
         self.bucket_field = bucket_field
-        if isinstance(logger, str):
-            self._logger = create_logger(
-                rank=0,
-                log_file=os.path.join(logger, "Map_Buckets.log"),
-                name="Map_Buckets",
-            )
-        else:
-            self._logger = logger
+        super().__init__(
+            class_name="map_buckets",
+            logger=logger,
+            profile_dir=profile_dir,
+            cache_dir=cache_dir,
+        )
 
     @staticmethod
     def _get_output_part_ids_with_approx_equal_sum(
@@ -903,7 +914,6 @@ class _MapBuckets:
         ddf_anchor_docs_with_bk = buckets_df.map_partitions(
             self._add_anchor_docs, num_anchors=self.num_anchors
         )
-        self._logger.info("output_map_df is based on string bytes")
         ddf_anchor_docs_with_bk = ddf_anchor_docs_with_bk.merge(
             output_map_df, on=self.bucket_field
         )
@@ -934,29 +944,30 @@ class _MapBuckets:
         del output_map_df
         return ddf_anchor_docs_with_bk
 
+    def _df_impl(self, df: dask_cudf.DataFrame):
+        self.map_buckets_with_anchors(df, df, shuffle_type="tasks")
 
-class _Shuffle:
+
+class _Shuffle(BaseModule):
     def __init__(
         self,
         id_fields: Union[str, list] = "id",
         text_field: str = "text",
         logger: Union[logging.LoggerAdapter, str] = "./",
-        profile_dir: str = None,
-        int_to_str_id: str = None,
+        profile_dir: Optional[str] = None,
+        int_to_str_id: Optional[str] = None,
+        cache_dir: Optional[str] = None,
     ):
-        if isinstance(logger, str):
-            self._logger = create_logger(
-                rank=0,
-                log_file=os.path.join(logger, "LSH.log"),
-                name="LSH",
-            )
-        else:
-            self._logger = logger
-
         self.id_fields = id_fields
         self.text_field = text_field
         self.profile_dir = profile_dir
         self.int_to_str_id = int_to_str_id
+        super().__init__(
+            class_name="shuffle",
+            logger=logger,
+            profile_dir=profile_dir,
+            cache_dir=cache_dir,
+        )
 
     def shuffle_docs_on_buckets(
         self,
@@ -1196,13 +1207,16 @@ class _Shuffle:
             text_part_start_offset = 0
 
 
-class JaccardSimilarity:
+class JaccardSimilarity(BaseModule):
     def __init__(
         self,
         id_field="id",
         anchor_id_fields=["anchor_0_id", "anchor_1_id"],
         text_field="text",
         ngram_width=5,
+        logger: Union[logging.LoggerAdapter, str] = "./",
+        cache_dir: Optional[str] = None,
+        profile_dir: Optional[str] = None,
     ):
         self.id_field = id_field
         self.anchor_id_fields = anchor_id_fields
@@ -1211,6 +1225,13 @@ class JaccardSimilarity:
         self.left_id = f"{self.id_field}_x"
         self.right_id = f"{self.id_field}_y"
         self.ngram_width = ngram_width
+
+        super().__init__(
+            class_name="jaccard_similarity",
+            logger=logger,
+            profile_dir=profile_dir,
+            cache_dir=cache_dir,
+        )
 
     def __call__(DocumentDataset):
         raise NotImplementedError
@@ -1381,15 +1402,22 @@ class ConnectedComponents:
         jaccard_pairs_path: str,
         id_column="id",
         convert_str_ids=False,
-        jaccard_threshold: int = 0.8,
+        jaccard_threshold: float = 0.8,
+        logger: Union[logging.LoggerAdapter, str] = "./",
+        profile_dir: Optional[str] = None,
     ):
-        self.cache_dir = cache_dir
         self.jaccard_pairs_path = jaccard_pairs_path
         self.id_column = id_column
         self.left_id = f"{id_column}_x"
         self.right_id = f"{id_column}_y"
         self.convert_str_ids = convert_str_ids
         self.jaccard_threshold = jaccard_threshold
+        super(BaseModule).__init__(
+            class_name="connected_components",
+            logger=logger,
+            profile_dir=profile_dir,
+            cache_dir=cache_dir,
+        )
 
     def cc_workflow(self, output_path):
         deduped_parsed_id_path = self._write_dedup_parsed_id()
