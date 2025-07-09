@@ -3,7 +3,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import pytest
+from loguru import logger
 
 from ray_curator.backends.base import BaseExecutor
 from ray_curator.backends.experimental.ray_data import RayDataExecutor
@@ -22,7 +24,7 @@ from .utils import (
 @pytest.mark.parametrize(
     "setup_pipeline",
     [
-        # (XennaExecutor, {}),
+        (XennaExecutor, {}),
         (RayDataExecutor, {}),
     ],
     indirect=True,
@@ -79,7 +81,13 @@ class TestBackends:
             with open(file) as f:
                 for line in f:
                     data = json.loads(line)
-                    assert set(data.keys()) == {"id", "doc_length", "text"}, "Mismatch in output file contents"
+                    assert set(data.keys()) == {
+                        "id",
+                        "doc_length",
+                        "text",
+                        "add_length_process_id",
+                        "fanout_process_id",
+                    }, "Mismatch in output file contents"
 
     def test_output_tasks(self):
         """Test that output tasks have the correct count, types, and properties."""
@@ -105,7 +113,7 @@ class TestBackends:
         """Test that performance statistics are correctly recorded for all stages."""
         # Check content of stage perf stats
         assert self.output_tasks is not None, "Expected output tasks"
-        expected_stage_names = ["jsonl_reader", "add_length", "split_into_rows", "jsonl_writer"]
+        expected_stage_names = ["jsonl_reader", "split_into_rows", "add_length", "jsonl_writer"]
         for task_idx, task in enumerate(self.output_tasks):
             assert len(task._stage_perf) == EXPECTED_NUM_STAGES, "Mismatch in number of stage perf stats"
             # Make sure stage names match
@@ -115,13 +123,31 @@ class TestBackends:
                 )
                 # Process time should be greater than idle time
                 assert perf_stats.process_time > 0, "Process time should be non-zero for all stages"
-            assert task._stage_perf[1].num_items_processed == task._stage_perf[2].num_items_processed, (
-                "Mismatch in number of items processed by add_length and split_into_rows"
+            assert task._stage_perf[0].num_items_processed == task._stage_perf[1].num_items_processed, (
+                "Mismatch in number of items processed by jsonl_reader and split_into_rows"
             )
-            # Because we split df into a single row each, the number of items processed by jsonl_writer should be only 1 i.e 1 row
-            assert task._stage_perf[3].num_items_processed == 1, (
-                "Mismatch in number of items processed by jsonl_writer"
+            # Because we split df into a single row each, the number of items processed by jsonl_writer should be only 1 i.e 1 row per task
+            assert task._stage_perf[2].num_items_processed == task._stage_perf[3].num_items_processed == 1, (
+                "Mismatch in number of items processed by add_length and jsonl_writer"
             )
+
+    def test_post_fanout_parallel_execution(self):
+        """Test that post-fanout stages run in parallel by verifying multiple process IDs are used."""
+        assert self.output_tasks is not None, "Expected output tasks"
+        assert self.output_dir is not None, "Output directory should be set by fixture"
+
+        # Collect all process IDs from the output files
+        output_df = pd.concat(
+            [pd.read_json(file, lines=True, orient="records") for file in self.output_dir.glob("*.jsonl")]
+        )
+        fanout_process_ids = output_df["fanout_process_id"].unique()
+        add_length_process_ids = output_df["add_length_process_id"].unique()
+
+        logger.info(f"Fanout process IDs: {fanout_process_ids}")
+        logger.info(f"Add length process IDs: {add_length_process_ids}")
+        assert len(fanout_process_ids) < len(add_length_process_ids), (
+            "Fanout process IDs should be less than add_length_process_ids"
+        )
 
     def test_ray_data_execution_plan(self):
         """Test that Ray Data creates the expected execution plan with correct stage organization."""
@@ -137,11 +163,11 @@ class TestBackends:
         execution_plan_stages = [stage.strip() for stage in stages]
         expected_stages = [
             "InputDataBuffer[Input]",
-            "ActorPoolMapOperator[MapBatches(FilePartitioningStageProcessor)]",
-            "ActorPoolMapOperator[StreamingRepartition->MapBatches(JsonlReaderStageProcessor)]",
-            "ActorPoolMapOperator[MapBatches(AddLengthStageProcessor)]",
-            "ActorPoolMapOperator[MapBatches(SplitIntoRowsStageProcessor)]",
-            "ActorPoolMapOperator[StreamingRepartition->MapBatches(JsonlWriterProcessor)]",
+            "ActorPoolMapOperator[MapBatches(FilePartitioningStage)]",
+            "ActorPoolMapOperator[StreamingRepartition->MapBatches(JsonlReaderStage)]",
+            "ActorPoolMapOperator[MapBatches(SplitIntoRowsStage)]",
+            "ActorPoolMapOperator[StreamingRepartition->MapBatches(AddLengthStage)]",
+            "ActorPoolMapOperator[MapBatches(JsonlWriter)]",
         ]
 
         assert execution_plan_stages == expected_stages, (
