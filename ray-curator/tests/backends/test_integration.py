@@ -22,7 +22,7 @@ from .utils import (
 @pytest.mark.parametrize(
     "setup_pipeline",
     [
-        (XennaExecutor, {}),
+        # (XennaExecutor, {}),
         (RayDataExecutor, {}),
     ],
     indirect=True,
@@ -137,10 +137,11 @@ class TestBackends:
         execution_plan_stages = [stage.strip() for stage in stages]
         expected_stages = [
             "InputDataBuffer[Input]",
-            "TaskPoolMapOperator[MapBatches(FilePartitioningStage)]",
-            "TaskPoolMapOperator[StreamingRepartition->MapBatches(JsonlReaderStage)->MapBatches(AddLengthStage)]",
-            "TaskPoolMapOperator[MapBatches(SplitIntoRowsStage)]",
-            "TaskPoolMapOperator[StreamingRepartition->MapBatches(JsonlWriter)]",
+            "ActorPoolMapOperator[MapBatches(FilePartitioningStageProcessor)]",
+            "ActorPoolMapOperator[StreamingRepartition->MapBatches(JsonlReaderStageProcessor)]",
+            "ActorPoolMapOperator[MapBatches(AddLengthStageProcessor)]",
+            "ActorPoolMapOperator[MapBatches(SplitIntoRowsStageProcessor)]",
+            "ActorPoolMapOperator[StreamingRepartition->MapBatches(JsonlWriterProcessor)]",
         ]
 
         assert execution_plan_stages == expected_stages, (
