@@ -79,8 +79,8 @@ class DocumentIterateStage(ProcessingStage[FileGroupTask, DocumentBatch]):
                     for record_dict in iterator_result:
                         if self.record_limit and record_count >= self.record_limit:
                             break
-                        # TODO: this should work with cloud storage
                         if self.add_filename_column:
+                            # TODO: Support cloud storage https://github.com/NVIDIA-NeMo/Curator/issues/779
                             record_dict[self.filename_col] = os.path.basename(file_path)
                         records.append(record_dict)
                         record_count += 1

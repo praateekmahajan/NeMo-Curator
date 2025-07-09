@@ -73,7 +73,7 @@ class BaseCommonCrawlUrlGenerator(URLGenerator, ABC):
         if not gz_path_urls:
             return []
 
-        for gz_path_url in gz_path_urls:  # TODO: check this
+        for gz_path_url in gz_path_urls:
             try:
                 response = requests.get(gz_path_url, stream=True, timeout=30)  # Added timeout
                 response.raise_for_status()
@@ -151,7 +151,7 @@ class MainCommonCrawlUrlGenerator(BaseCommonCrawlUrlGenerator):
             snapshot_id = snapshot_info.get("id")
             # 2008-2010 are old snapshots and not supported by this script
             if not snapshot_id or snapshot_id in {"CC-MAIN-2009-2010", "CC-MAIN-2008-2009"}:
-                logger.warning(f"Skipping old snapshot for common crawl: {snapshot_id}")
+                logger.warning(f"Skipping old snapshot for Common Crawl: {snapshot_id}")
                 continue
             try:
                 parts = snapshot_id.split("-")

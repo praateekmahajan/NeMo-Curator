@@ -3,7 +3,9 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-from warcio.archiveiterator import ArchiveIterator  # TODO: consider using fastwarc
+
+# TODO: Consider using fastwarc https://github.com/NVIDIA-NeMo/Curator/issues/778
+from warcio.archiveiterator import ArchiveIterator
 
 from ray_curator.stages.download.text import DocumentIterator
 
@@ -16,6 +18,7 @@ class CommonCrawlWarcIterator(DocumentIterator):
         filename = file_path.name if isinstance(file_path, Path) else file_path.split("/")[-1]
 
         num_records = 0
+        # TODO: Support cloud storage https://github.com/NVIDIA-NeMo/Curator/issues/779
         with open(file_path, "rb") as file_pointer:
             archive_iterator = ArchiveIterator(file_pointer, arc2warc=True)
             while True:
