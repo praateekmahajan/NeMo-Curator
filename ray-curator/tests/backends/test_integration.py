@@ -20,19 +20,19 @@ from .utils import (
 
 
 @pytest.mark.parametrize(
-    "setup_pipeline",
+    "backend_config",
     [
         (XennaExecutor, {}),
         (RayDataExecutor, {}),
     ],
     indirect=True,
 )
-class TestBackends:
+class TestBackendIntegrations:
     NUM_TEST_FILES = 3
     EXPECTED_OUTPUT_TASKS = EXPECTED_OUTPUT_FILES = TOTAL_DOCUMENTS  # After split_into_rows stage
 
     # Class attributes for shared test data
-    # These are set by the setup_pipeline fixture
+    # These are set by the backend_config fixture
     backend_cls: BaseExecutor | None = None
     config: dict[str, Any] | None = None
     input_dir: Path | None = None
@@ -41,8 +41,8 @@ class TestBackends:
     all_logs: str = ""
 
     @pytest.fixture(scope="class", autouse=True)
-    def setup_pipeline(self, request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory):
-        """Set up pipeline execution once per backend configuration."""
+    def backend_config(self, request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory):
+        """up test environment with backend-specific configuration and execute pipeline.."""
         # Get the backend class and config from the parametrized values
         backend_cls, config = request.param
 

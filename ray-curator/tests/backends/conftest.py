@@ -7,9 +7,10 @@ proper isolation through Ray's actor/task lifecycle management.
 
 import os
 from pathlib import Path
-from loguru import logger
+
 import pytest
 import ray
+from loguru import logger
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -27,7 +28,7 @@ def shared_ray_cluster():
 
     # Get the ray-curator directory to add to the working_dir to enable serialization of test modules
     ray_curator_path = Path(__file__).parent.parent.parent.resolve()
-    
+
     # Initialize Ray with fixed resources
     ray.init(
         num_cpus=8,
@@ -35,9 +36,7 @@ def shared_ray_cluster():
         ignore_reinit_error=True,
         log_to_driver=True,
         local_mode=False,  # Use cluster mode for better testing of distributed features
-        runtime_env={
-            "working_dir": str(ray_curator_path)
-        }
+        runtime_env={"working_dir": str(ray_curator_path)},
     )
 
     # Get the actual Ray address more reliably
