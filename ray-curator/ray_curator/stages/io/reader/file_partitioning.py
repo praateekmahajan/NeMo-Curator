@@ -10,6 +10,7 @@ from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.resources import Resources
 from ray_curator.tasks import FileGroupTask, _EmptyTask
 from ray_curator.utils.file_utils import get_all_files_paths_under
+from ray_curator.backends.experimental.ray_data.utils import RayStageSpecKeys
 
 
 @dataclass
@@ -52,7 +53,7 @@ class FilePartitioningStage(ProcessingStage[_EmptyTask, FileGroupTask]):
     def ray_stage_spec(self) -> dict[str, Any]:
         """Ray stage specification for this stage."""
         return {
-            "is_fanout_stage": True,
+            RayStageSpecKeys.IS_FANOUT_STAGE: True,
         }
 
     def process(self, _: _EmptyTask) -> list[FileGroupTask]:

@@ -7,7 +7,6 @@ import fsspec
 from loguru import logger
 
 import ray_curator.stages.io.writer.utils as writer_utils
-from ray_curator.backends.base import WorkerMetadata
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.tasks import DocumentBatch, FileGroupTask
 
@@ -24,18 +23,17 @@ class BaseWriter(ProcessingStage[DocumentBatch, FileGroupTask], ABC):
     file_extension: str
     storage_options: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self):
+        from fsspec.utils import infer_storage_options
+
+        storage_options_inferred = infer_storage_options(self.output_dir)
+        self.fs = fsspec.filesystem(storage_options_inferred["protocol"], **self.storage_options)
+
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
 
     def outputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
-
-    def setup(self, _: WorkerMetadata | None = None) -> None:
-        """Setup filesystem once per worker."""
-        from fsspec.utils import infer_storage_options
-
-        storage_options_inferred = infer_storage_options(self.output_dir)
-        self.fs = fsspec.filesystem(storage_options_inferred["protocol"], **self.storage_options)
 
     def get_file_extension(self) -> str:
         """Return the file extension for this writer format."""

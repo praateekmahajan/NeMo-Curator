@@ -49,6 +49,7 @@ class Task(ABC, Generic[T]):
         """Validate the task data."""
 
 
+
 @dataclass
 class _EmptyTask(Task[None]):
     """Dummy task for testing."""

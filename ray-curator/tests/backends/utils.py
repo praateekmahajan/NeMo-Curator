@@ -15,6 +15,8 @@ from pathlib import Path
 import pandas as pd
 from loguru import logger
 
+from ray_curator.backends.base import NodeInfo, WorkerMetadata
+from ray_curator.backends.experimental.ray_data.utils import RayStageSpecKeys
 from ray_curator.pipeline import Pipeline
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.io.reader import JsonlReader
@@ -23,8 +25,8 @@ from ray_curator.stages.resources import Resources
 from ray_curator.tasks import DocumentBatch
 
 # Constants for test configuration
-TOTAL_DOCUMENTS = 10
-EXPECTED_NUM_STAGES = 4  # JsonlReader -> AddLengthStage -> SplitIntoRowsStage -> JsonlWriter
+TOTAL_DOCUMENTS = 400
+EXPECTED_NUM_STAGES = 6  # JsonlReader -> AddLengthStage -> SplitIntoRowsStage -> AddLengthStage -> StageWithSetup -> JsonlWriter
 
 
 def create_test_data(output_dir: Path, num_files: int) -> None:
@@ -51,11 +53,14 @@ def create_test_data(output_dir: Path, num_files: int) -> None:
 class AddLengthStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     """Add a length field to the document."""
 
+    def __init__(self, column_name: str = "doc_length"):
+        self.column_name = column_name
+
     def process(self, input_data: DocumentBatch) -> DocumentBatch:
         df = input_data.to_pandas()
-        df["doc_length"] = df["text"].apply(len)
+        df[self.column_name] = df["text"].apply(len)
         # Add process ID to track parallel execution
-        df["add_length_process_id"] = os.getpid()
+        df[f"{self.column_name}_pid"] = os.getpid()
         return DocumentBatch(
             task_id=input_data.task_id,
             dataset_name=input_data.dataset_name,
@@ -72,7 +77,17 @@ class AddLengthStage(ProcessingStage[DocumentBatch, DocumentBatch]):
         return ["data"], ["text"]
 
     def outputs(self) -> tuple[list[str], list[str]]:
-        return ["data"], ["text", "doc_length", "add_length_process_id"]
+        return ["data"], ["text", self.column_name, f"{self.column_name}_pid"]
+
+    @property
+    def ray_stage_spec(self) -> dict[str, bool]:
+        return {
+            RayStageSpecKeys.IS_ACTOR_STAGE: True,
+        }
+
+    @property
+    def resources(self) -> Resources:
+        return Resources(cpus=1.1)
 
 
 class SplitIntoRowsStage(ProcessingStage[DocumentBatch, DocumentBatch]):
@@ -80,12 +95,12 @@ class SplitIntoRowsStage(ProcessingStage[DocumentBatch, DocumentBatch]):
 
     @property
     def resources(self) -> Resources:
-        return Resources(cpus=0.5)
+        return Resources(cpus=1.1)
 
     def process(self, input_data: DocumentBatch) -> list[DocumentBatch]:
         df = input_data.to_pandas()
         # Add process ID to track parallel execution
-        df["fanout_process_id"] = os.getpid()
+        df["fanout_pid"] = os.getpid()
 
         # Remove source_files from metadata to prevent file collision issues
         # When splitting a document into individual rows, each row would inherit
@@ -119,14 +134,56 @@ class SplitIntoRowsStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     @property
     def ray_stage_spec(self) -> dict[str, bool]:
         return {
-            "is_fanout_stage": True,
+            RayStageSpecKeys.IS_FANOUT_STAGE: True,
+            RayStageSpecKeys.IS_ACTOR_STAGE: True,
         }
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
 
     def outputs(self) -> tuple[list[str], list[str]]:
-        return ["data"], ["fanout_process_id"]
+        return ["data"], ["fanout_pid"]
+
+
+class StageWithSetup(ProcessingStage[DocumentBatch, DocumentBatch]):
+    """Setup stage that adds a numeric field to the document."""
+
+    TEMP_FILE_PATH = "/tmp/numeric_setup.txt"  # noqa: S108
+
+    @property
+    def name(self) -> str:
+        return "stage_with_setup"
+
+    def inputs(self) -> tuple[list[str], list[str]]:
+        return ["data"], []
+
+    def outputs(self) -> tuple[list[str], list[str]]:
+        return ["data"], ["node_id", "random_string", "setup_pid"]
+
+    @property
+    def resources(self) -> Resources:
+        return Resources(cpus=1)
+
+    def setup_on_node(self, node_info: NodeInfo, _: WorkerMetadata) -> None:
+        with open(self.TEMP_FILE_PATH, "w") as f:
+            f.write(f"{node_info.node_id},random_str")
+
+    def setup(self, _: WorkerMetadata) -> None:
+        with open(self.TEMP_FILE_PATH) as f:
+            self.node_id, self.random_str = f.read().split(",")
+
+    def process(self, input_data: DocumentBatch) -> DocumentBatch:
+        df = input_data.to_pandas()
+        df["node_id"] = self.node_id
+        df["random_string"] = self.random_str
+        df["setup_pid"] = os.getpid()
+        return DocumentBatch(
+            task_id=input_data.task_id,
+            dataset_name=input_data.dataset_name,
+            data=df,
+            _metadata=input_data._metadata,
+            _stage_perf=input_data._stage_perf,
+        )
 
 
 def create_test_pipeline(input_dir: Path, output_dir: Path) -> Pipeline:
@@ -144,11 +201,16 @@ def create_test_pipeline(input_dir: Path, output_dir: Path) -> Pipeline:
         )
     )
 
+    pipeline.add_stage(AddLengthStage("doc_length_1"))
+
     # Add SplitIntoRowsStage stage
     pipeline.add_stage(SplitIntoRowsStage())
 
     # Add AddLengthStage stage
-    pipeline.add_stage(AddLengthStage())
+    pipeline.add_stage(AddLengthStage("doc_length_2"))
+
+    # Add StageWithSetup stage
+    pipeline.add_stage(StageWithSetup())
 
     # Add JsonlWriter stage
     pipeline.add_stage(JsonlWriter(output_dir=str(output_dir)))

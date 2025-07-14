@@ -10,6 +10,7 @@ from ray_curator.backends.base import BaseExecutor
 from ray_curator.tasks import EmptyTask, Task
 
 from .adapter import RayDataStageAdapter
+from .utils import execute_setup_on_node, register_loguru_serializer
 
 if TYPE_CHECKING:
     from ray_curator.stages.base import ProcessingStage
@@ -19,9 +20,9 @@ class RayDataExecutor(BaseExecutor):
     """Ray Data-based executor for pipeline execution.
 
     This executor:
-    1. Converts initial tasks to Ray Data dataset
-    2. Applies each stage as a Ray Data transformation
-    3. Leverages Ray Data's automatic parallelization and resource management
+    1. Executes setup on all nodes for all stages
+    2. Converts initial tasks to Ray Data dataset
+    3. Applies each stage as a Ray Data transformation (as a task or actor in map_batches)
     4. Returns final results as a list of tasks
     """
 
@@ -42,8 +43,11 @@ class RayDataExecutor(BaseExecutor):
         if not stages:
             return []
 
-        logger.info(f"Starting Ray Data pipeline with {len(stages)} stages")
+        register_loguru_serializer()
+        execute_setup_on_node(stages)
 
+
+        logger.info(f"Starting Ray Data pipeline with {len(stages)} stages")
         # Initialize with initial tasks if provided, otherwise start with EmptyTask
         tasks: list[Task] = initial_tasks if initial_tasks else [EmptyTask]
 
@@ -102,6 +106,7 @@ class RayDataExecutor(BaseExecutor):
             List of Task objects
         """
         # Get all items from dataset
+        logger.info(f"Dataset num_blocks: {dataset.materialize().num_blocks()}")
         items = dataset.take_all()
 
         # Handle the fact that Ray Data might return different formats
@@ -109,3 +114,4 @@ class RayDataExecutor(BaseExecutor):
         for item in items:
             tasks.append(item["item"])
         return tasks
+
