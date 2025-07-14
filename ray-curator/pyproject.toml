@@ -31,8 +31,16 @@ dependencies = [
     "torch",
     "transformers>=4.48.0",
 ]
-
 [project.optional-dependencies]
+text = [
+    # Download / Extract
+    "justext",
+    "lxml",
+    "resiliparse",
+    "trafilatura==2.0.0",
+    "pycld2",
+    "warcio"
+]
 cuda12x = [
     "cudf-cu12==25.6.*",
     "cugraph-cu12==25.6.*",
@@ -41,11 +49,11 @@ cuda12x = [
     "pylibraft-cu12==25.6.*",
     "raft-dask-cu12==25.6.*",
 ]
-
 dev = [
     "debugpy",
     "pre-commit",
     "pytest",
+    "pytest-loguru",
     "ruff==0.11.4",
 ]
 
