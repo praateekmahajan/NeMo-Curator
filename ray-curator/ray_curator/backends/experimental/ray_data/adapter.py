@@ -33,7 +33,7 @@ class RayDataStageAdapter(BaseStageAdapter):
             self._batch_size = 1
 
         # Go through all the keys in the ray_stage_spec and raise error if they are not in RayStageSpecKeys
-        for key in self.stage.ray_stage_spec:
+        for key in self.stage.ray_stage_spec():
             if key not in RayStageSpecKeys:
                 msg = f"Invalid key {key} in ray_stage_spec for stage {self.stage}"
                 raise ValueError(msg)
@@ -72,7 +72,7 @@ class RayDataStageAdapter(BaseStageAdapter):
             msg = "Ray Data does not support nvdecs / nvencs. Please use gpus instead."
             raise ValueError(msg)
 
-        is_actor_stage_ = self.stage.ray_stage_spec.get(RayStageSpecKeys.IS_ACTOR_STAGE, is_actor_stage(self.stage))
+        is_actor_stage_ = self.stage.ray_stage_spec().get(RayStageSpecKeys.IS_ACTOR_STAGE, is_actor_stage(self.stage))
 
         if is_actor_stage_:
             map_batches_fn = create_actor_from_stage(self.stage)
@@ -89,12 +89,11 @@ class RayDataStageAdapter(BaseStageAdapter):
             concurrency_kwargs["num_gpus"] = self.stage.resources.gpus  # type: ignore[reportArgumentType]
 
         # Calculate concurrency based on available resources
-
         logger.info(f"{self.stage.__class__.__name__} {is_actor_stage_=} with concurrency{concurrency_kwargs=}")
 
         processed_dataset = dataset.map_batches(map_batches_fn, batch_size=self.batch_size, **concurrency_kwargs)  # type: ignore[reportArgumentType]
 
-        if self.stage.ray_stage_spec.get(RayStageSpecKeys.IS_FANOUT_STAGE, False):
+        if self.stage.ray_stage_spec().get(RayStageSpecKeys.IS_FANOUT_STAGE, False):
             processed_dataset = processed_dataset.repartition(target_num_rows_per_block=1)
 
         return processed_dataset

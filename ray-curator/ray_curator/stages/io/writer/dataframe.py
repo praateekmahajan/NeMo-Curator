@@ -22,6 +22,7 @@ class BaseWriter(ProcessingStage[DocumentBatch, FileGroupTask], ABC):
     output_dir: str
     file_extension: str
     storage_options: dict[str, Any] = field(default_factory=dict)
+    _name: str = "BaseWriter"
 
     def __post_init__(self):
         from fsspec.utils import infer_storage_options
