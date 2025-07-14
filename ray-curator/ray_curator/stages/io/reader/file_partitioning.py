@@ -25,6 +25,7 @@ class FilePartitioningStage(ProcessingStage[_EmptyTask, FileGroupTask]):
     blocksize: int | str | None = None
     file_extensions: list[str] | None = None
     storage_options: dict[str, Any] | None = None
+    _name: str = "file_partitioning"
 
     def __post_init__(self):
         """Initialize default values."""
@@ -32,10 +33,6 @@ class FilePartitioningStage(ProcessingStage[_EmptyTask, FileGroupTask]):
             self.file_extensions = [".jsonl", ".json"]
         if self.storage_options is None:
             self.storage_options = {}
-
-    @property
-    def name(self) -> str:
-        return "file_partitioning"
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return [], []
@@ -48,7 +45,6 @@ class FilePartitioningStage(ProcessingStage[_EmptyTask, FileGroupTask]):
         """Resource requirements for this stage."""
         return Resources(cpus=0.5)
 
-    @property
     def ray_stage_spec(self) -> dict[str, Any]:
         """Ray stage specification for this stage."""
         return {
