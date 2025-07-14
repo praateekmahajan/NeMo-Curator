@@ -26,7 +26,9 @@ from ray_curator.tasks import DocumentBatch
 
 # Constants for test configuration
 TOTAL_DOCUMENTS = 400
-EXPECTED_NUM_STAGES = 6  # JsonlReader -> AddLengthStage -> SplitIntoRowsStage -> AddLengthStage -> StageWithSetup -> JsonlWriter
+EXPECTED_NUM_STAGES = (
+    6  # JsonlReader -> AddLengthStage -> SplitIntoRowsStage -> AddLengthStage -> StageWithSetup -> JsonlWriter
+)
 
 
 def create_test_data(output_dir: Path, num_files: int) -> None:

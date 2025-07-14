@@ -83,8 +83,18 @@ class TestBackendIntegrations:
                 # Because of split_into_rows, each file should have 1 line
                 assert len(lines) == 1, f"Expected 1 line per file but got {len(lines)}"
                 data = json.loads(lines[0])
-                assert set(data.keys()) == {"id", "text", "fanout_pid", "doc_length_1", "doc_length_1_pid", "doc_length_2", "doc_length_2_pid", "node_id", "random_string", "setup_pid"}, "Mismatch in output file contents"
-
+                assert set(data.keys()) == {
+                    "id",
+                    "text",
+                    "fanout_pid",
+                    "doc_length_1",
+                    "doc_length_1_pid",
+                    "doc_length_2",
+                    "doc_length_2_pid",
+                    "node_id",
+                    "random_string",
+                    "setup_pid",
+                }, "Mismatch in output file contents"
 
     def test_node_ids(self):
         """Test that node ids are correctly recorded for all stages."""
@@ -95,7 +105,9 @@ class TestBackendIntegrations:
         # 400 rows, 75 files, 8 cpus
         """Test that process ids are correctly recorded for all stages."""
         df = pd.concat([pd.read_json(f, lines=True) for task in self.output_tasks for f in task.data])
-        logger.info(f"fanout_pid: {df['fanout_pid'].nunique()}; doc_length_1_pid: {df['doc_length_1_pid'].nunique()}; doc_length_2_pid: {df['doc_length_2_pid'].nunique()}; setup_pid: {df['setup_pid'].nunique()}")
+        logger.info(
+            f"fanout_pid: {df['fanout_pid'].nunique()}; doc_length_1_pid: {df['doc_length_1_pid'].nunique()}; doc_length_2_pid: {df['doc_length_2_pid'].nunique()}; setup_pid: {df['setup_pid'].nunique()}"
+        )
 
         # ls stage -> creates 75 tasks
         # reader stage -> reads 75 tasks
@@ -103,11 +115,6 @@ class TestBackendIntegrations:
         # fanout -> 400 tasks
         # add_length_2_num_calls -> 400
         # jsonlwriter_num_calls -> 400
-
-
-
-
-
 
     def test_output_tasks(self):
         """Test that output tasks have the correct count, types, and properties."""
@@ -133,7 +140,14 @@ class TestBackendIntegrations:
         """Test that performance statistics are correctly recorded for all stages."""
         # Check content of stage perf stats
         assert self.output_tasks is not None, "Expected output tasks"
-        expected_stage_names = ["jsonl_reader", "add_length", "split_into_rows", "add_length", "stage_with_setup", "jsonl_writer"]
+        expected_stage_names = [
+            "jsonl_reader",
+            "add_length",
+            "split_into_rows",
+            "add_length",
+            "stage_with_setup",
+            "jsonl_writer",
+        ]
         for task_idx, task in enumerate(self.output_tasks):
             assert len(task._stage_perf) == EXPECTED_NUM_STAGES, "Mismatch in number of stage perf stats"
             # Make sure stage names match
@@ -149,9 +163,12 @@ class TestBackendIntegrations:
                 "Mismatch in number of items processed by firstadd_length and split_into_rows"
             )
             # Because we split df into a single row each, each stage after split_into_rows should have 1 item processed
-            assert task._stage_perf[3].num_items_processed == task._stage_perf[4].num_items_processed == task._stage_perf[5].num_items_processed == 1, (
-                "Mismatch in number of items processed by stages after split_into_rows"
-            )
+            assert (
+                task._stage_perf[3].num_items_processed
+                == task._stage_perf[4].num_items_processed
+                == task._stage_perf[5].num_items_processed
+                == 1
+            ), "Mismatch in number of items processed by stages after split_into_rows"
 
     def test_ray_data_execution_plan(self):
         """Test that Ray Data creates the expected execution plan with correct stage organization."""
