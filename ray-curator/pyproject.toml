@@ -66,10 +66,8 @@ dev = [
     "debugpy",
     "pre-commit",
     "pytest",
-    "ruff==0.11.4",
-    "debugpy",
-    "pytest",
     "pytest-loguru",
+    "ruff==0.11.4",
 ]
 
 [tool.setuptools]
