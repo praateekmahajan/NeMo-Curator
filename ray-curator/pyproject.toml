@@ -41,16 +41,6 @@ text = [
     "warcio"
 ]
 
-text = [
-    # Download / Extract
-    "justext",
-    "lxml",
-    "resiliparse",
-    "trafilatura==2.0.0",
-    "pycld2",
-    "warcio"
-]
-
 [project.optional-dependencies]
 cuda12x = [
     "cudf-cu12==25.6.*",
