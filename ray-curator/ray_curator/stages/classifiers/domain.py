@@ -107,7 +107,7 @@ class _DomainClassifier(DistributedDataClassifier):
 
         super().__init__(
             labels=self.labels,
-            filter_by=filter_by,
+            filter_by=filter_by or [],
             model_batch_size=model_batch_size,
             out_dim=self.out_dim,
             pred_column=pred_column,
@@ -149,7 +149,7 @@ class _DomainClassifier(DistributedDataClassifier):
             labels=self.labels,
             max_chars=self.max_chars,
             model_batch_size=self.model_batch_size,
-            label_col=self.pred_column,
+            label_col=self.pred_column if isinstance(self.pred_column, str) else self.pred_column[0],
             text_field=self.text_field,
             prob_col=self.prob_column,
         )

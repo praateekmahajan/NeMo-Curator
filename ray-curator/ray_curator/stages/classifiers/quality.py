@@ -110,7 +110,7 @@ class QualityClassifier(DistributedDataClassifier):
 
         super().__init__(
             labels=self.labels,
-            filter_by=filter_by,
+            filter_by=filter_by or [],
             model_batch_size=model_batch_size,
             out_dim=self.out_dim,
             pred_column=pred_column,
@@ -127,7 +127,7 @@ class QualityClassifier(DistributedDataClassifier):
 
     def setup(self, _: WorkerMetadata | None = None) -> None:
         # Load the Hugging Face model and processor from the cache.
-        self.model = QualityModel(config=QualityModelConfig, autocast=self.autocast, max_mem_gb=self.max_mem_gb)
+        self.model = QualityModel(config=QualityModelConfig(), autocast=self.autocast, max_mem_gb=self.max_mem_gb)
 
     def _run_classifier(self, df: pd.DataFrame | cudf.DataFrame) -> pd.DataFrame | cudf.DataFrame:
         print("Starting quality classifier inference", flush=True)
@@ -137,7 +137,7 @@ class QualityClassifier(DistributedDataClassifier):
             labels=self.labels,
             max_chars=self.max_chars,
             model_batch_size=self.model_batch_size,
-            label_col=self.pred_column,
+            label_col=self.pred_column if isinstance(self.pred_column, str) else self.pred_column[0],
             text_field=self.text_field,
             prob_col=self.prob_column,
         )
@@ -168,11 +168,11 @@ class StreamingQualityClassifier(StreamingDataClassifier):
         self.max_mem_gb = max_mem_gb
 
         # TODO: Find a solution to remove this
-        self.model = QualityModel(config=QualityModelConfig, autocast=autocast, max_mem_gb=self.max_mem_gb)
+        self.model = QualityModel(config=QualityModelConfig(), autocast=autocast, max_mem_gb=self.max_mem_gb)
 
         super().__init__(
             labels=self.labels,
-            filter_by=filter_by,
+            filter_by=filter_by or [],
             model_batch_size=model_batch_size,
             out_dim=self.out_dim,
             pred_column=pred_column,
@@ -188,4 +188,4 @@ class StreamingQualityClassifier(StreamingDataClassifier):
 
     def setup(self, _: WorkerMetadata | None = None) -> None:
         # Load the Hugging Face model and processor from the cache.
-        self.model = QualityModel(config=QualityModelConfig, autocast=self.autocast, max_mem_gb=self.max_mem_gb)
+        self.model = QualityModel(config=QualityModelConfig(), autocast=self.autocast, max_mem_gb=self.max_mem_gb)

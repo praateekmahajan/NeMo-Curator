@@ -169,7 +169,7 @@ class StreamingDataClassifier(CompositeStage[DocumentBatch, DocumentBatch]):
 
 
 class HFDeberta(nn.Module, PyTorchModelHubMixin):
-    def __init__(self, config: dataclass):
+    def __init__(self, config: dict):
         super().__init__()
         self.model = AutoModel.from_pretrained(config["base_model"])
         self.dropout = nn.Dropout(config["fc_dropout"])
