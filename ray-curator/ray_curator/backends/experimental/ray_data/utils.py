@@ -46,11 +46,11 @@ def calculate_concurrency_for_actors_for_stage(stage: ProcessingStage) -> tuple[
 
     # CPU constraint
     if stage.resources.cpus > 0:
-        max_cpu_actors = int(available_cpus / stage.resources.cpus)
+        max_cpu_actors = available_cpus // stage.resources.cpus
 
     # GPU constraint
     if stage.resources.gpus > 0:
-        max_gpu_actors = int(available_gpus / stage.resources.gpus)
+        max_gpu_actors = available_gpus // stage.resources.gpus
 
     # Take the minimum of CPU and GPU constraints
     max_actors = min(max_cpu_actors, max_gpu_actors)
@@ -100,11 +100,11 @@ def execute_setup_on_node(stages: list[ProcessingStage]) -> None:
     ray_tasks = []
     for node in ray.nodes():
         node_id = node["NodeID"]
+        node_info = NodeInfo(node_id=node_id)
+        worker_metadata = WorkerMetadata(worker_id="", allocation=None)
         logger.info(f"Executing setup on node {node_id} for {len(stages)} stages")
         for stage in stages:
             # Create NodeInfo and WorkerMetadata for this node
-            node_info = NodeInfo(node_id=node_id)
-            worker_metadata = WorkerMetadata(worker_id="", allocation=None)
 
             ray_tasks.append(
                 _setup_stage_on_node.options(

@@ -46,7 +46,7 @@ class RayDataExecutor(BaseExecutor):
         register_loguru_serializer()
         execute_setup_on_node(stages)
 
-        logger.info(f"Starting Ray Data pipeline with {len(stages)} stages")
+        logger.info(f"Setup on node complete for all stages. Starting Ray Data pipeline with {len(stages)} stages")
         # Initialize with initial tasks if provided, otherwise start with EmptyTask
         tasks: list[Task] = initial_tasks if initial_tasks else [EmptyTask]
 
