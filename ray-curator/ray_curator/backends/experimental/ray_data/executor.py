@@ -101,7 +101,6 @@ class RayDataExecutor(BaseExecutor):
             List of Task objects
         """
         # Get all items from dataset
-        logger.info(f"Dataset num_blocks: {dataset.materialize().num_blocks()}")
         items = dataset.take_all()
 
         # Handle the fact that Ray Data might return different formats
