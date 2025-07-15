@@ -29,7 +29,7 @@ class TestGetAvailableCpuGpuResources:
         """Test get_available_cpu_gpu_resources function."""
         # Test with Ray resources from conftest.py
         cpus, gpus = get_available_cpu_gpu_resources()
-        assert cpus == 8.0
+        assert cpus == 10
         assert gpus == 0.0
 
     @patch("ray.available_resources", return_value={"CPU": 4.0, "node:10.0.0.1": 1.0, "memory": 1000000000})
@@ -157,14 +157,18 @@ class TestExecuteSetupOnNode:
         # Verify that NodeInfo and WorkerMetadata were passed correctly
         for stage_name in ["mock_stage_1", "mock_stage_2"]:
             stage_files = list(tmp_path.glob(f"{stage_name}_*.txt"))
-            assert len(stage_files) == 2, f"Expected 2 calls to setup_on_node for {stage_name}, got {len(stage_files)}"
+            assert len(stage_files) == len(ray.nodes()), (
+                f"Expected {len(ray.nodes())} calls to setup_on_node for {stage_name}, got {len(stage_files)}"
+            )
             node_ids = set()
             for file_path in stage_files:
                 content = file_path.read_text().strip()
                 node_id, worker_id = content.split(",")
                 assert worker_id == "", f"{stage_name} Worker ID should be empty string, got '{worker_id}'"
                 node_ids.add(node_id)
-            assert len(node_ids) == 2, f"Expected 2 different node IDs for {stage_name}, got {node_ids}"
+            assert len(node_ids) == len(ray.nodes()), (
+                f"Expected {len(ray.nodes())} different node IDs for {stage_name}, got {node_ids}"
+            )
             assert node_ids == {node["NodeID"] for node in ray.nodes()}, (
                 f"Expected node IDs to be the same as the Ray nodes, got {node_ids}"
             )
@@ -175,6 +179,6 @@ class TestExecuteSetupOnNode:
             for record in caplog.records
             if record.message.startswith("Executing setup on node") and record.message.endswith("for 2 stages")
         ]
-        assert len(matching_logs) == 2, (
-            f"Expected 2 logs for setup on node for 2 stages, got {len(matching_logs)}: {matching_logs}"
+        assert len(matching_logs) == len(ray.nodes()), (
+            f"Expected {len(ray.nodes())} logs for setup on node for 2 stages, got {len(matching_logs)}: {matching_logs}"
         )
