@@ -14,7 +14,6 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
 from typing import TYPE_CHECKING, Literal
 
 import cudf
@@ -23,7 +22,6 @@ import pandas as pd
 import pyarrow as pa
 import torch
 from crossfit import op
-from crossfit.backend.torch.model import Model
 from transformers import AutoTokenizer
 
 from ray_curator.backends.base import WorkerMetadata
@@ -90,9 +88,7 @@ class BasicTokenizer:
 
         # Split into chunks of 1024 rows each
         # TODO: Need to check if this actually improves performance
-        chunks = [table.slice(i, 1024) for i in range(0, table.num_rows, 1024)]
-
-        return chunks
+        return [table.slice(i, 1024) for i in range(0, table.num_rows, 1024)]
 
 
 @dataclass

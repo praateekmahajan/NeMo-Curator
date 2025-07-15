@@ -30,7 +30,6 @@ from .fineweb_edu import (
 from .prompt_task_complexity import PromptTaskComplexityClassifier
 from .quality import QualityClassifier
 
-
 __all__ = [
     "AegisClassifier",
     "ContentTypeClassifier",
