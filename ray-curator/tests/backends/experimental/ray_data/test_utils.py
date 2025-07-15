@@ -29,7 +29,7 @@ class TestGetAvailableCpuGpuResources:
         """Test get_available_cpu_gpu_resources function."""
         # Test with Ray resources from conftest.py
         cpus, gpus = get_available_cpu_gpu_resources()
-        assert cpus == 10
+        assert cpus == 11
         assert gpus == 0.0
 
     @patch("ray.available_resources", return_value={"CPU": 4.0, "node:10.0.0.1": 1.0, "memory": 1000000000})
