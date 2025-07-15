@@ -7,12 +7,14 @@ and validating expected outputs across different backend implementations.
 import io
 import json
 import logging
-import os
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
+import ray
 from loguru import logger
 
 from ray_curator.backends.base import NodeInfo, WorkerMetadata
@@ -21,14 +23,36 @@ from ray_curator.pipeline import Pipeline
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.io.reader import JsonlReader
 from ray_curator.stages.io.writer import JsonlWriter
-from ray_curator.stages.resources import Resources
 from ray_curator.tasks import DocumentBatch
+
+
+@ray.remote(num_cpus=0.1)
+class StageCallCounter:
+    """Ray actor to count how many times each stage is called."""
+
+    def __init__(self):
+        self.counters = Counter()
+
+    def increment(self, stage_name: str) -> int:
+        """Increment the counter for a stage and return the new count."""
+        self.counters[stage_name] += 1
+        return self.counters[stage_name]
+
+    def get_count(self, stage_name: str) -> int:
+        """Get the current count for a stage."""
+        return self.counters.get(stage_name, 0)
+
+    def get_all_counts(self) -> dict[str, int]:
+        """Get all stage counts."""
+        return self.counters.copy()
+
 
 # Constants for test configuration
 TOTAL_DOCUMENTS = 100
 EXPECTED_NUM_STAGES = (
     6  # JsonlReader -> AddLengthStage -> SplitIntoRowsStage -> AddLengthStage -> StageWithSetup -> JsonlWriter
 )
+FILES_PER_PARTITION = 2
 
 
 def create_test_data(output_dir: Path, num_files: int) -> None:
@@ -55,29 +79,42 @@ def create_test_data(output_dir: Path, num_files: int) -> None:
 class AddLengthStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     """Add a length field to the document."""
 
-    _name = "add_length"
-
     def __init__(self, column_name: str = "doc_length"):
+        self._name = "add_length"
         self.column_name = column_name
 
+    def process_batch(self, tasks: list[DocumentBatch]) -> list[DocumentBatch]:
+        """Process a batch of tasks and add length field."""
+        # Get the counter actor by name
+        counter_actor = ray.get_actor("stage_call_counter")
+        stage_identifier = f"{self._name}_{self.column_name}"
+        ray.get(counter_actor.increment.remote(stage_identifier))
+
+        results = []
+        for input_data in tasks:
+            df = input_data.to_pandas()
+            df[self.column_name] = df["text"].apply(len)
+            results.append(
+                DocumentBatch(
+                    task_id=input_data.task_id,
+                    dataset_name=input_data.dataset_name,
+                    data=df,
+                    _metadata=input_data._metadata,
+                    _stage_perf=input_data._stage_perf,
+                )
+            )
+        return results
+
     def process(self, input_data: DocumentBatch) -> DocumentBatch:
-        df = input_data.to_pandas()
-        df[self.column_name] = df["text"].apply(len)
-        # Add process ID to track parallel execution
-        df[f"{self.column_name}_pid"] = os.getpid()
-        return DocumentBatch(
-            task_id=input_data.task_id,
-            dataset_name=input_data.dataset_name,
-            data=df,
-            _metadata=input_data._metadata,
-            _stage_perf=input_data._stage_perf,
-        )
+        """Dummy process method - we use process_batch instead."""
+        msg = f"Stage '{self._name}' should use process_batch, not process"
+        raise NotImplementedError(msg)
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], ["text"]
 
     def outputs(self) -> tuple[list[str], list[str]]:
-        return ["data"], ["text", self.column_name, f"{self.column_name}_pid"]
+        return ["data"], ["text", self.column_name]
 
     def ray_stage_spec(self) -> dict[str, bool]:
         return {
@@ -92,9 +129,6 @@ class SplitIntoRowsStage(ProcessingStage[DocumentBatch, DocumentBatch]):
 
     def process(self, input_data: DocumentBatch) -> list[DocumentBatch]:
         df = input_data.to_pandas()
-        # Add process ID to track parallel execution
-        df["fanout_pid"] = os.getpid()
-
         # Remove source_files from metadata to prevent file collision issues
         # When splitting a document into individual rows, each row would inherit
         # the same source_files metadata. This causes the JsonlWriter to hash
@@ -130,7 +164,7 @@ class SplitIntoRowsStage(ProcessingStage[DocumentBatch, DocumentBatch]):
         return ["data"], []
 
     def outputs(self) -> tuple[list[str], list[str]]:
-        return ["data"], ["fanout_pid"]
+        return ["data"], []
 
 
 class StageWithSetup(ProcessingStage[DocumentBatch, DocumentBatch]):
@@ -139,13 +173,12 @@ class StageWithSetup(ProcessingStage[DocumentBatch, DocumentBatch]):
     TEMP_FILE_PATH = "/tmp/numeric_setup.txt"  # noqa: S108
 
     _name = "stage_with_setup"
-    _resources = Resources(cpus=1)
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
 
     def outputs(self) -> tuple[list[str], list[str]]:
-        return ["data"], ["node_id", "random_string", "setup_pid"]
+        return ["data"], ["node_id", "random_string"]
 
     def setup_on_node(self, node_info: NodeInfo, _: WorkerMetadata) -> None:
         with open(self.TEMP_FILE_PATH, "w") as f:
@@ -159,7 +192,6 @@ class StageWithSetup(ProcessingStage[DocumentBatch, DocumentBatch]):
         df = input_data.to_pandas()
         df["node_id"] = self.node_id
         df["random_string"] = self.random_str
-        df["setup_pid"] = os.getpid()
         return DocumentBatch(
             task_id=input_data.task_id,
             dataset_name=input_data.dataset_name,
@@ -169,8 +201,12 @@ class StageWithSetup(ProcessingStage[DocumentBatch, DocumentBatch]):
         )
 
 
-def create_test_pipeline(input_dir: Path, output_dir: Path) -> Pipeline:
+def create_test_pipeline(input_dir: Path, output_dir: Path) -> tuple[Pipeline, Any]:
     """Create a test pipeline for integration testing."""
+
+    # Create a named counter actor that can be referenced by name
+    counter_actor = StageCallCounter.options(name="stage_call_counter").remote()
+
     pipeline = Pipeline(
         name="integration_test_pipeline", description="Integration test pipeline for backend comparison"
     )
@@ -179,7 +215,7 @@ def create_test_pipeline(input_dir: Path, output_dir: Path) -> Pipeline:
     pipeline.add_stage(
         JsonlReader(
             file_paths=str(input_dir),
-            files_per_partition=2,  # Create multiple tasks for better testing
+            files_per_partition=FILES_PER_PARTITION,
             reader="pandas",
         )
     )
@@ -198,7 +234,7 @@ def create_test_pipeline(input_dir: Path, output_dir: Path) -> Pipeline:
     # Add JsonlWriter stage
     pipeline.add_stage(JsonlWriter(output_dir=str(output_dir)))
 
-    return pipeline
+    return pipeline, counter_actor
 
 
 @contextmanager

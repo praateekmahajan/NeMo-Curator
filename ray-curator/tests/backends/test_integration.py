@@ -1,9 +1,9 @@
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 import pytest
 import ray
 from loguru import logger
@@ -15,6 +15,7 @@ from ray_curator.tasks import FileGroupTask
 
 from .utils import (
     EXPECTED_NUM_STAGES,
+    FILES_PER_PARTITION,
     TOTAL_DOCUMENTS,
     capture_logs,
     create_test_data,
@@ -25,9 +26,9 @@ from .utils import (
 @pytest.mark.parametrize(
     "backend_config",
     [
+        pytest.param((RayDataExecutor, {}), id="ray_data"),
         pytest.param((XennaExecutor, {"execution_mode": "batch"}), id="xenna_batch"),
         pytest.param((XennaExecutor, {"execution_mode": "streaming"}), id="xenna_streaming"),
-        pytest.param((RayDataExecutor, {}), id="ray_data"),
     ],
     indirect=True,
 )
@@ -42,6 +43,7 @@ class TestBackendIntegrations:
     input_dir: Path | None = None
     output_dir: Path | None = None
     output_tasks: list[FileGroupTask] | None = None
+    remote_counter_actor: Any | None = None
     all_logs: str = ""
 
     @pytest.fixture(scope="class", autouse=True)
@@ -61,7 +63,8 @@ class TestBackendIntegrations:
 
         # Create test data and pipeline
         create_test_data(request.cls.input_dir, num_files=self.NUM_TEST_FILES)  # type: ignore[reportOptionalMemberAccess]
-        pipeline = create_test_pipeline(request.cls.input_dir, request.cls.output_dir)  # type: ignore[reportOptionalMemberAccess]
+        pipeline, remote_counter_actor = create_test_pipeline(request.cls.input_dir, request.cls.output_dir)  # type: ignore[reportOptionalMemberAccess]
+        request.cls.remote_counter_actor = remote_counter_actor  # type: ignore[reportOptionalMemberAccess]
 
         # Execute pipeline with comprehensive logging capture
         executor = backend_cls(config)
@@ -69,6 +72,13 @@ class TestBackendIntegrations:
             request.cls.output_tasks = pipeline.run(executor)  # type: ignore[reportOptionalMemberAccess]
             # Store logs for backend-specific tests
             request.cls.all_logs = log_buffer.getvalue()  # type: ignore[reportOptionalMemberAccess]
+
+        # Teardown: kill the actor after the test class completes
+        yield
+
+        # Kill the counter actor to clean up for next test run
+        if hasattr(request.cls, "remote_counter_actor") and request.cls.remote_counter_actor is not None:  # type: ignore[reportOptionalMemberAccess]
+            ray.kill(request.cls.remote_counter_actor)  # type: ignore[reportOptionalMemberAccess]
 
     def test_output_files(self):
         """Test that the correct number of output files are created with expected content."""
@@ -88,31 +98,11 @@ class TestBackendIntegrations:
                 assert set(data.keys()) == {
                     "id",
                     "text",
-                    "fanout_pid",
                     "doc_length_1",
-                    "doc_length_1_pid",
                     "doc_length_2",
-                    "doc_length_2_pid",
                     "node_id",
                     "random_string",
-                    "setup_pid",
                 }, "Mismatch in output file contents"
-
-    def test_process_ids(self):
-        # 400 rows, 75 files, 8 cpus
-        """Test that process ids are correctly recorded for all stages."""
-        assert self.output_tasks is not None, "Expected output tasks"
-        df = pd.concat([pd.read_json(f, lines=True) for task in self.output_tasks for f in task.data])
-        logger.info(
-            f"fanout_pid: {df['fanout_pid'].nunique()}; doc_length_1_pid: {df['doc_length_1_pid'].nunique()}; doc_length_2_pid: {df['doc_length_2_pid'].nunique()}; setup_pid: {df['setup_pid'].nunique()}"
-        )
-
-        # ls stage -> creates 75 tasks
-        # reader stage -> reads 75 tasks
-        # add_length_1_num_calls -> 75
-        # fanout -> 400 tasks
-        # add_length_2_num_calls -> 400
-        # jsonlwriter_num_calls -> 400
 
     def test_output_tasks(self):
         """Test that output tasks have the correct count, types, and properties."""
@@ -184,16 +174,30 @@ class TestBackendIntegrations:
         # Split by " -> " to get individual stages
         stages = execution_plan.split(" -> ")
         execution_plan_stages = [stage.strip() for stage in stages]
+        # Tasks can get fused with Actors, but Actors can't get fused with Tasks or Actors
+        # StreamingRepartition should never get fused
         expected_stages = [
             "InputDataBuffer[Input]",
             "TaskPoolMapOperator[MapBatches(FilePartitioningStageTask)]",
             "TaskPoolMapOperator[StreamingRepartition]",
-            "TaskPoolMapOperator[MapBatches(JsonlReaderStageTask)->MapBatches(AddLengthStageTask)->MapBatches(SplitIntoRowsStageTask)]",
+            "ActorPoolMapOperator[MapBatches(JsonlReaderStageTask)->MapBatches(AddLengthStageActor)]",
+            "ActorPoolMapOperator[MapBatches(SplitIntoRowsStageActor)]",
             "TaskPoolMapOperator[StreamingRepartition]",
-            "ActorPoolMapOperator[MapBatches(AddLengthStageTask)->MapBatches(StageWithSetupActor)]",
+            "ActorPoolMapOperator[MapBatches(AddLengthStageActor)]",
+            "ActorPoolMapOperator[MapBatches(StageWithSetupActor)]",
             "TaskPoolMapOperator[MapBatches(JsonlWriterTask)]",
         ]
 
         assert execution_plan_stages == expected_stages, (
             f"Expected execution plan stages: {expected_stages}, got: {execution_plan_stages}"
         )
+
+    def test_stage_call_counts(self):
+        """Test that the stage call counts are correctly recorded for all stages."""
+        assert self.remote_counter_actor is not None, "Expected remote counter actor"
+        stage_call_counts = ray.get(self.remote_counter_actor.get_all_counts.remote())
+        logger.info(f"Stage call counts: {stage_call_counts}")
+        assert stage_call_counts == {
+            "add_length_doc_length_1": math.ceil(self.NUM_TEST_FILES / FILES_PER_PARTITION),
+            "add_length_doc_length_2": TOTAL_DOCUMENTS,
+        }
