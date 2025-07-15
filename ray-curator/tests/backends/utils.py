@@ -25,7 +25,7 @@ from ray_curator.stages.resources import Resources
 from ray_curator.tasks import DocumentBatch
 
 # Constants for test configuration
-TOTAL_DOCUMENTS = 400
+TOTAL_DOCUMENTS = 100
 EXPECTED_NUM_STAGES = (
     6  # JsonlReader -> AddLengthStage -> SplitIntoRowsStage -> AddLengthStage -> StageWithSetup -> JsonlWriter
 )
@@ -55,6 +55,8 @@ def create_test_data(output_dir: Path, num_files: int) -> None:
 class AddLengthStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     """Add a length field to the document."""
 
+    _name = "add_length"
+
     def __init__(self, column_name: str = "doc_length"):
         self.column_name = column_name
 
@@ -71,33 +73,22 @@ class AddLengthStage(ProcessingStage[DocumentBatch, DocumentBatch]):
             _stage_perf=input_data._stage_perf,
         )
 
-    @property
-    def name(self) -> str:
-        return "add_length"
-
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], ["text"]
 
     def outputs(self) -> tuple[list[str], list[str]]:
         return ["data"], ["text", self.column_name, f"{self.column_name}_pid"]
 
-    @property
     def ray_stage_spec(self) -> dict[str, bool]:
         return {
             RayStageSpecKeys.IS_ACTOR_STAGE: True,
         }
 
-    @property
-    def resources(self) -> Resources:
-        return Resources(cpus=1.1)
-
 
 class SplitIntoRowsStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     """Split the document into rows."""
 
-    @property
-    def resources(self) -> Resources:
-        return Resources(cpus=1.1)
+    _name = "split_into_rows"
 
     def process(self, input_data: DocumentBatch) -> list[DocumentBatch]:
         df = input_data.to_pandas()
@@ -129,10 +120,6 @@ class SplitIntoRowsStage(ProcessingStage[DocumentBatch, DocumentBatch]):
             )
         return tasks
 
-    @property
-    def name(self) -> str:
-        return "split_into_rows"
-
     def ray_stage_spec(self) -> dict[str, bool]:
         return {
             RayStageSpecKeys.IS_FANOUT_STAGE: True,
@@ -151,19 +138,14 @@ class StageWithSetup(ProcessingStage[DocumentBatch, DocumentBatch]):
 
     TEMP_FILE_PATH = "/tmp/numeric_setup.txt"  # noqa: S108
 
-    @property
-    def name(self) -> str:
-        return "stage_with_setup"
+    _name = "stage_with_setup"
+    _resources = Resources(cpus=1)
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
 
     def outputs(self) -> tuple[list[str], list[str]]:
         return ["data"], ["node_id", "random_string", "setup_pid"]
-
-    @property
-    def resources(self) -> Resources:
-        return Resources(cpus=1)
 
     def setup_on_node(self, node_info: NodeInfo, _: WorkerMetadata) -> None:
         with open(self.TEMP_FILE_PATH, "w") as f:

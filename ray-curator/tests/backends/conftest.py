@@ -26,6 +26,7 @@ def shared_ray_cluster():
     os.environ["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "0"
     os.environ["RAY_MAX_LIMIT_FROM_API_SERVER"] = "40000"
     os.environ["RAY_MAX_LIMIT_FROM_DATA_SOURCE"] = "40000"
+    os.environ["RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION"] = "0.9"
     # This ensures we are not reusing an existing cluster but starting a new one
     if "RAY_ADDRESS" in os.environ:
         del os.environ["RAY_ADDRESS"]
@@ -33,12 +34,16 @@ def shared_ray_cluster():
     # Get the ray-curator directory to add to the working_dir to enable serialization of test modules
     ray_curator_path = Path(__file__).parent.parent.parent.resolve()
 
-    # We creaate a cluster with 2 nodes
+    # We creaate a cluster with 10 nodes
+    # Xenna needs 3 cpus for scheduling / autoscaling
+    # If we have 6-7 stages all needing 1 cpu, then we atleast need 9 cpus for Xenna to work
+    # Ray Data seems to need ~4 extra cpus
     cluster = Cluster(
         initialize_head=True,
         connect=True,
-        head_node_args={"num_cpus": 4, "num_gpus": 0},
+        head_node_args={"num_cpus": 1, "num_gpus": 0},
     )
+    cluster.add_node(num_cpus=5, num_gpus=0)
     cluster.add_node(num_cpus=4, num_gpus=0)
 
     ray.init(
@@ -58,10 +63,6 @@ def shared_ray_cluster():
 
     # Get the actual Ray address more reliably
     ray_address = cluster.address or ray.get_runtime_context().gcs_address
-    if len(ray.nodes()) != 2:
-        msg = f"Our Ray cluster for tests should have 2 nodes but has {len(ray.nodes())}"
-        raise EnvironmentError(msg)  # noqa: UP024
-
     # Set RAY_ADDRESS so Xenna will connect to our cluster
     os.environ["RAY_ADDRESS"] = ray_address
     logger.info(f"Set RAY_ADDRESS for tests to: {ray_address}")

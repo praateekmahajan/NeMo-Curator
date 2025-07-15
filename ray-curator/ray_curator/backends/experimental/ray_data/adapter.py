@@ -89,7 +89,7 @@ class RayDataStageAdapter(BaseStageAdapter):
             concurrency_kwargs["num_gpus"] = self.stage.resources.gpus  # type: ignore[reportArgumentType]
 
         # Calculate concurrency based on available resources
-        logger.info(f"{self.stage.__class__.__name__} {is_actor_stage_=} with concurrency{concurrency_kwargs=}")
+        logger.info(f"{self.stage.__class__.__name__} {is_actor_stage_=} with {concurrency_kwargs=}")
 
         processed_dataset = dataset.map_batches(map_batches_fn, batch_size=self.batch_size, **concurrency_kwargs)  # type: ignore[reportArgumentType]
 

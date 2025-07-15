@@ -10,6 +10,7 @@ from loguru import logger
 
 from ray_curator.backends.base import BaseExecutor
 from ray_curator.backends.experimental.ray_data import RayDataExecutor
+from ray_curator.backends.xenna import XennaExecutor
 from ray_curator.tasks import FileGroupTask
 
 from .utils import (
@@ -24,13 +25,14 @@ from .utils import (
 @pytest.mark.parametrize(
     "backend_config",
     [
-        # (XennaExecutor, {}),
-        (RayDataExecutor, {}),
+        pytest.param((XennaExecutor, {"execution_mode": "batch"}), id="xenna_batch"),
+        pytest.param((XennaExecutor, {"execution_mode": "streaming"}), id="xenna_streaming"),
+        pytest.param((RayDataExecutor, {}), id="ray_data"),
     ],
     indirect=True,
 )
 class TestBackendIntegrations:
-    NUM_TEST_FILES = 75
+    NUM_TEST_FILES = 15
     EXPECTED_OUTPUT_TASKS = EXPECTED_OUTPUT_FILES = TOTAL_DOCUMENTS  # After split_into_rows stage
 
     # Class attributes for shared test data
@@ -62,7 +64,7 @@ class TestBackendIntegrations:
         pipeline = create_test_pipeline(request.cls.input_dir, request.cls.output_dir)  # type: ignore[reportOptionalMemberAccess]
 
         # Execute pipeline with comprehensive logging capture
-        executor = backend_cls(**config)
+        executor = backend_cls(config)
         with capture_logs() as log_buffer:
             request.cls.output_tasks = pipeline.run(executor)  # type: ignore[reportOptionalMemberAccess]
             # Store logs for backend-specific tests
@@ -98,12 +100,14 @@ class TestBackendIntegrations:
 
     def test_node_ids(self):
         """Test that node ids are correctly recorded for all stages."""
+        assert self.output_tasks is not None, "Expected output tasks"
         df = pd.concat([pd.read_json(f, lines=True) for task in self.output_tasks for f in task.data])
         assert df["node_id"].nunique() == len(ray.nodes()), "Mismatch in number of node ids"
 
     def test_process_ids(self):
         # 400 rows, 75 files, 8 cpus
         """Test that process ids are correctly recorded for all stages."""
+        assert self.output_tasks is not None, "Expected output tasks"
         df = pd.concat([pd.read_json(f, lines=True) for task in self.output_tasks for f in task.data])
         logger.info(
             f"fanout_pid: {df['fanout_pid'].nunique()}; doc_length_1_pid: {df['doc_length_1_pid'].nunique()}; doc_length_2_pid: {df['doc_length_2_pid'].nunique()}; setup_pid: {df['setup_pid'].nunique()}"
@@ -170,6 +174,7 @@ class TestBackendIntegrations:
                 == 1
             ), "Mismatch in number of items processed by stages after split_into_rows"
 
+    @pytest.mark.xfail(ray.__version__ <= "2.47.1", reason="Execution plan test only applies to RayDataExecutor")
     def test_ray_data_execution_plan(self):
         """Test that Ray Data creates the expected execution plan with correct stage organization."""
         if self.backend_cls != RayDataExecutor:

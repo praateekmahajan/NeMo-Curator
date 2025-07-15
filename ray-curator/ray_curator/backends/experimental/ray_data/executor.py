@@ -66,10 +66,6 @@ class RayDataExecutor(BaseExecutor):
 
                 # Apply stage transformation
                 current_dataset = adapter.process_dataset(current_dataset)
-
-                # Log progress
-                logger.info(f"  Stage {i + 1} completed")
-
         except Exception as e:
             logger.error(f"Error during pipeline execution: {e}")
             raise

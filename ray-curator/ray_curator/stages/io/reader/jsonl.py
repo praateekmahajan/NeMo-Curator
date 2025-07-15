@@ -8,7 +8,7 @@ import pyarrow as pa
 import pyarrow.json as pj
 from loguru import logger
 
-from ray_curator.stages.base import CompositeStage, ProcessingStage, Resources
+from ray_curator.stages.base import CompositeStage, ProcessingStage
 from ray_curator.tasks import DocumentBatch, FileGroupTask, _EmptyTask
 
 from .file_partitioning import FilePartitioningStage
@@ -33,10 +33,6 @@ class JsonlReaderStage(ProcessingStage[FileGroupTask, DocumentBatch]):
 
     def outputs(self) -> tuple[list[str], list[str]]:
         return ["data"], self.columns or []
-
-    @property
-    def resources(self) -> Resources:
-        return Resources(cpus=1.1)
 
     def process(self, task: FileGroupTask) -> DocumentBatch:
         """
