@@ -20,10 +20,13 @@ from typing import TYPE_CHECKING, Literal
 import cudf
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import torch
 from crossfit import op
 from crossfit.backend.torch.model import Model
+from transformers import AutoTokenizer
 
+from ray_curator.backends.base import WorkerMetadata
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.resources import Resources
 from ray_curator.tasks import DocumentBatch
@@ -34,178 +37,64 @@ if TYPE_CHECKING:
     from ray_curator.stages.classifiers.base import HFModel
 
 
-# Copied from CrossFit
-class TokenizerType(Enum):
-    SUBWORD = 1
-    SENTENCE_PIECE = 2
-    DEFAULT = 3
+def _trim_tokenized(batch_tokenized: dict, padding_side: Literal["left", "right"] = "right") -> dict:
+    """
+    Trim tokenized data to the max non-padded length.
+    """
+    max_len = batch_tokenized["attention_mask"].sum(axis=1).max()
+    for key, val in batch_tokenized.items():
+        if padding_side == "left":
+            batch_tokenized[key] = val[:, -max_len:]
+        else:
+            batch_tokenized[key] = val[:, :max_len]
+    return batch_tokenized
 
 
-# Copied from Praateek's PR: https://github.com/ayushdg/ray-curator/pull/16
-def clip_tokens(token_o: dict, max_length: int | None, padding_side: Literal["left", "right"] = "right") -> dict:
-    clip_len = token_o["attention_mask"].sum(axis=1).max()
-    clip_len = min(clip_len, max_length) if max_length is not None else clip_len
-    if padding_side == "right":
-        token_o["input_ids"] = token_o["input_ids"][:, :clip_len]
-        token_o["attention_mask"] = token_o["attention_mask"][:, :clip_len]
-    else:
-        token_o["input_ids"] = token_o["input_ids"][:, -clip_len:]
-        token_o["attention_mask"] = token_o["attention_mask"][:, -clip_len:]
+class BasicTokenizer:
+    def __init__(self, tokenizer: AutoTokenizer):
+        self.tokenizer = tokenizer
 
-    token_o.pop("metadata", None)
-
-    return token_o
-
-
-# TODO: Check this function for correctness
-# Seems to be producing correct results in benchmarks
-def create_list_series_from_1d_or_2d_ar(ar: np.ndarray, index: pd.Index | None = None) -> pd.Series:
-    if len(ar.shape) == 1:
-        n_rows = ar.shape[0]
-        list_data = [[x] for x in ar]
-    elif len(ar.shape) == 2:  # noqa: PLR2004
-        n_rows, n_cols = ar.shape
-        list_data = [list(ar[i]) for i in range(n_rows)]
-    else:
-        msg = f"Unexpected input shape: {ar.shape}"
-        raise RuntimeError(msg)
-
-    return pd.Series(list_data, index=index, dtype="object")
-
-
-# TODO: CrossFit needs to be more flexible to enable this as a CPU-only stage
-# For now, we use a custom class here that is (almost) identical to CrossFit's Tokenizer class
-class Tokenizer:
-    def __init__(  # noqa: PLR0913
-        self,
-        model: Model,
-        tokenizer_type: str = "default",
-        cols: list[str] | None = None,
-        keep_cols: list[str] | None = None,
-        pre: Callable | None = None,
-        max_length: int | None = None,
-        max_chars: int | None = None,
-    ):
-        self.pre = pre
-        self.cols = cols
-        self.keep_cols = keep_cols or []
-        self.model = model
-
-        # For now, we only support the default tokenizer
-        assert tokenizer_type.lower() == "default"  # noqa: S101
-        self.tokenizer_type = TokenizerType.DEFAULT
-
-        self.max_length = max_length or model.max_seq_length()
-        self.max_chars = max_chars
-
-    def tokenize_strings(self, sentences: pd.Series, max_length: int | None = None) -> dict:
-        tokenizer = self.model.load_tokenizer()
-        self.padding_side = tokenizer.padding_side
-
-        if isinstance(sentences, pd.Series):
-            sentences = sentences.to_list()
+    def __call__(self, df: pd.DataFrame) -> list[pd.DataFrame]:
+        # TODO: Do not hardcode text column
+        # TODO: Slice text
+        sentences = df.column("text").to_pylist()
 
         with torch.no_grad():
-            return tokenizer.batch_encode_plus(
+            inputs = self.tokenizer.batch_encode_plus(
                 sentences,
-                max_length=max_length or self.max_length,
+                # TODO: Do not hardcode this
+                max_length=1024,
                 padding="max_length",
-                return_tensors="pt",
+                # TODO: "pt" or "np"
+                return_tensors="np",
                 truncation=True,
                 add_special_tokens=True,
                 return_token_type_ids=False,
             )
 
-    def call_column(self, data: pd.Series) -> tuple[pd.Series, pd.Series]:
-        text = data.replace("", "unknown")
+        # TODO: Clip tokens here
+        inputs = _trim_tokenized(inputs)
 
-        if self.max_chars:
-            text = text.str.slice(0, self.max_chars)
+        # Assuming a large batch size here
+        attention_sum = inputs["attention_mask"].sum(axis=1)
+        # TODO: Need to retain all columns here, not just the ones we need
+        table = pa.table({
+            "text": sentences,
+            "input_ids": pa.array(inputs["input_ids"].tolist(), type=pa.list_(pa.int32())),
+            "attention_mask": pa.array(inputs["attention_mask"].tolist(), type=pa.list_(pa.int32())),
+            "attention_sum": pa.array(attention_sum),
+        })
+        # TODO: Add ID column here, to help with unsorting
 
-        tokenized_data = self.tokenize_strings(text).copy()
-        tokenized_data = clip_tokens(
-            tokenized_data,
-            max_length=self.max_length,
-            padding_side=self.padding_side,
-        )
+        table = table.sort_by([("attention_sum", "ascending")])
 
-        # TODO: Could move this into the CrossFitPredictorWrapper stage and run it before calling op.Predictor
-        input_ids = create_list_series_from_1d_or_2d_ar(
-            tokenized_data["input_ids"].numpy().astype("int32"), data.index
-        )
-        attention_mask = create_list_series_from_1d_or_2d_ar(
-            tokenized_data["attention_mask"].numpy().astype("int32"), data.index
-        )
+        # Split into chunks of 1024 rows each
+        # TODO: Need to check if this actually improves performance
+        chunks = [table.slice(i, 1024) for i in range(0, table.num_rows, 1024)]
 
-        return input_ids, attention_mask
-
-    def call(self, data: pd.Series | pd.DataFrame) -> pd.DataFrame:
-        output = pd.DataFrame()
-
-        if self.cols is None:
-            input_ids, attention_mask = self.call_column(data)
-            output["input_ids"] = input_ids
-            output["attention_mask"] = attention_mask
-
-            return output
-
-        for col in self.cols:
-            if col not in data.columns:
-                msg = f"Column {col} not found in data"
-                raise ValueError(msg)
-
-            input_ids, attention_mask = self.call_column(data[col])
-            output[self._construct_name(col, "input_ids")] = input_ids
-            output[self._construct_name(col, "attention_mask")] = attention_mask
-
-        return output
-
-    def meta(self) -> dict[str, str]:
-        tokenized = {
-            "input_ids": "int32",
-            "attention_mask": "int32",
-        }
-
-        if len(self.cols) > 1:
-            tokenized = {
-                self._construct_name(col, suffix): dtype for col in self.cols for suffix, dtype in tokenized.items()
-            }
-
-        return tokenized
-
-    def _construct_name(self, col_name: str, suffix: str) -> str:
-        if len(self.cols) == 1:
-            return suffix
-
-        return f"{col_name}_{suffix}"
-
-    # Copied from CrossFit's Op class
-    def add_keep_cols(self, data: pd.Series | pd.DataFrame, output: pd.DataFrame) -> pd.DataFrame:
-        if not self.keep_cols:
-            return output
-
-        for col in self.keep_cols:
-            if col not in output.columns:
-                output[col] = data[col]
-
-        columns = list(output.columns)
-        # we use dict.fromkeys to remove duplicates and preserve order
-        return output[list(dict.fromkeys(self.keep_cols + columns))]
-
-    # Modified from CrossFit's Op class
-    def __call__(self, data: pd.Series | pd.DataFrame, *args, **kwargs):
-        if self.pre is not None:
-            data = self.pre(data)
-
-        output = self.call(data, *args, **kwargs)
-
-        if self.keep_cols:
-            output = self.add_keep_cols(data, output)
-
-        return output
+        return chunks
 
 
-# TODO: Unclear if a CPU-only stage offers any benefits over just making this a GPU stage
 @dataclass
 class CrossFitTokenizerWrapper(ProcessingStage[DocumentBatch, DocumentBatch]):
     """Wrapper for CrossFit tokenizer"""
@@ -235,8 +124,12 @@ class CrossFitTokenizerWrapper(ProcessingStage[DocumentBatch, DocumentBatch]):
             # Default CPU resources
             return Resources(cpus=1.0)
 
-    def process(self, batch: DocumentBatch) -> DocumentBatch | None:
-        df = batch.to_pandas()
+    def setup(self, _: WorkerMetadata | None = None) -> None:
+        # TODO: Do not hardcode this
+        self.tokenizer = AutoTokenizer.from_pretrained("nvidia/quality-classifier-deberta")
+
+    def process(self, batch: DocumentBatch) -> DocumentBatch | list[DocumentBatch]:
+        df = batch.to_pyarrow()
 
         # TODO: Tokenizer or op.Tokenizer
         if self.use_gpu:
@@ -247,21 +140,26 @@ class CrossFitTokenizerWrapper(ProcessingStage[DocumentBatch, DocumentBatch]):
                 max_chars=self.max_chars,
                 keep_cols=df.columns.to_list(),
             )(df).to_pandas()
-        else:
-            result_df = Tokenizer(
-                self.model,
-                cols=self.cols,
-                tokenizer_type=self.tokenizer_type,
-                max_chars=self.max_chars,
-                keep_cols=df.columns.to_list(),
-            )(df)
 
-        # Create output batch
-        return DocumentBatch(
-            task_id=f"{batch.task_id}_{self.name}",
-            dataset_name=batch.dataset_name,
-            data=result_df,
-        )
+            return DocumentBatch(
+                task_id=f"{batch.task_id}_{self.name}",
+                dataset_name=batch.dataset_name,
+                data=result_df,
+            )
+        else:
+            chunks = BasicTokenizer(self.tokenizer)(df)
+
+            # TODO: This version is a fanout stage. Does it help?
+            batches = []
+
+            for i, chunk in enumerate(chunks):
+                batches.append(DocumentBatch(
+                    task_id=f"{batch.task_id}_{self.name}_{i}",
+                    dataset_name=f"{batch.dataset_name}_{i}",
+                    data=chunk,
+                ))
+
+            return batches
 
 
 @dataclass
@@ -288,7 +186,7 @@ class CrossFitPredictorWrapper(ProcessingStage[DocumentBatch, DocumentBatch]):
     def resources(self) -> Resources:
         """Resource requirements for this stage."""
         # TODO: Check this
-        return Resources(gpu_memory_gb=_get_suggest_memory_for_classifier())
+        return Resources(gpu_memory_gb=_get_suggest_memory_for_classifier() + 3)
 
     def process(self, batch: DocumentBatch) -> DocumentBatch | None:
         df = batch.to_pandas()

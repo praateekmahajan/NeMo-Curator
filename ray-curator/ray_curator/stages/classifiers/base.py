@@ -67,7 +67,7 @@ class DistributedDataClassifier(ProcessingStage[DocumentBatch, DocumentBatch]):
     def resources(self) -> Resources:
         """Resource requirements for this stage."""
         # TODO: Check this
-        return Resources(gpu_memory_gb=_get_suggest_memory_for_classifier())
+        return Resources(gpu_memory_gb=(_get_suggest_memory_for_classifier() + 3))
 
     def process(self, batch: DocumentBatch) -> DocumentBatch | None:
         """Run classifier on documents and filter if desired."""

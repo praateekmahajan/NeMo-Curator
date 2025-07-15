@@ -16,6 +16,7 @@ import os
 from dataclasses import dataclass
 
 os.environ["RAPIDS_NO_INITIALIZE"] = "1"
+
 import cudf
 import pandas as pd
 from crossfit.backend.torch.hf.model import HFModel
@@ -30,6 +31,7 @@ from .base import (
     _run_classifier_helper,
 )
 from .utils import _get_suggest_memory_for_classifier
+
 
 QUALITY_IDENTIFIER = "nvidia/quality-classifier-deberta"
 

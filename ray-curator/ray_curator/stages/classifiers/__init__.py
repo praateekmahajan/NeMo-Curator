@@ -14,6 +14,10 @@
 
 import os
 
+import crossfit.config
+
+crossfit.config.set_disable_dask(True)
+
 os.environ["RAPIDS_NO_INITIALIZE"] = "1"
 from .aegis import AegisClassifier, InstructionDataGuardClassifier
 from .content_type import ContentTypeClassifier
@@ -25,6 +29,7 @@ from .fineweb_edu import (
 )
 from .prompt_task_complexity import PromptTaskComplexityClassifier
 from .quality import QualityClassifier
+
 
 __all__ = [
     "AegisClassifier",
