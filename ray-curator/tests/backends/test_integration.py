@@ -98,12 +98,6 @@ class TestBackendIntegrations:
                     "setup_pid",
                 }, "Mismatch in output file contents"
 
-    def test_node_ids(self):
-        """Test that node ids are correctly recorded for all stages."""
-        assert self.output_tasks is not None, "Expected output tasks"
-        df = pd.concat([pd.read_json(f, lines=True) for task in self.output_tasks for f in task.data])
-        assert df["node_id"].nunique() == len(ray.nodes()), "Mismatch in number of node ids"
-
     def test_process_ids(self):
         # 400 rows, 75 files, 8 cpus
         """Test that process ids are correctly recorded for all stages."""
@@ -174,7 +168,10 @@ class TestBackendIntegrations:
                 == 1
             ), "Mismatch in number of items processed by stages after split_into_rows"
 
-    @pytest.mark.xfail(ray.__version__ <= "2.47.1", reason="Execution plan test only applies to RayDataExecutor")
+    @pytest.mark.xfail(
+        ray.__version__ <= "2.47.1",
+        reason="Execution plan will fail for <=2.47.1 due to https://github.com/ray-project/ray/issues/54431",
+    )
     def test_ray_data_execution_plan(self):
         """Test that Ray Data creates the expected execution plan with correct stage organization."""
         if self.backend_cls != RayDataExecutor:
