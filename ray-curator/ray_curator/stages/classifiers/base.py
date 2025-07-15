@@ -51,10 +51,8 @@ class DistributedDataClassifier(ProcessingStage[DocumentBatch, DocumentBatch]):
     device_type: str
     autocast: bool
 
-    @property
-    def name(self) -> str:
-        msg = "Subclasses must implement this method"
-        raise NotImplementedError(msg)
+    def __post_init__(self):
+        self._resources = Resources(gpu_memory_gb=(_get_suggest_memory_for_classifier() + 3))
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
@@ -62,12 +60,6 @@ class DistributedDataClassifier(ProcessingStage[DocumentBatch, DocumentBatch]):
     def outputs(self) -> tuple[list[str], list[str]]:
         # TODO: Check for prob_column too, if there is one
         return ["data"], [self.pred_column] if isinstance(self.pred_column, str) else self.pred_column
-
-    @property
-    def resources(self) -> Resources:
-        """Resource requirements for this stage."""
-        # TODO: Check this
-        return Resources(gpu_memory_gb=(_get_suggest_memory_for_classifier() + 3))
 
     def process(self, batch: DocumentBatch) -> DocumentBatch | None:
         """Run classifier on documents and filter if desired."""

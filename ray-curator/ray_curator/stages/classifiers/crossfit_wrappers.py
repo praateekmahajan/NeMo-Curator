@@ -76,12 +76,14 @@ class BasicTokenizer:
         # Assuming a large batch size here
         attention_sum = inputs["attention_mask"].sum(axis=1)
         # TODO: Need to retain all columns here, not just the ones we need
-        table = pa.table({
-            "text": sentences,
-            "input_ids": pa.array(inputs["input_ids"].tolist(), type=pa.list_(pa.int32())),
-            "attention_mask": pa.array(inputs["attention_mask"].tolist(), type=pa.list_(pa.int32())),
-            "attention_sum": pa.array(attention_sum),
-        })
+        table = pa.table(
+            {
+                "text": sentences,
+                "input_ids": pa.array(inputs["input_ids"].tolist(), type=pa.list_(pa.int32())),
+                "attention_mask": pa.array(inputs["attention_mask"].tolist(), type=pa.list_(pa.int32())),
+                "attention_sum": pa.array(attention_sum),
+            }
+        )
         # TODO: Add ID column here, to help with unsorting
 
         table = table.sort_by([("attention_sum", "ascending")])
@@ -100,25 +102,19 @@ class CrossFitTokenizerWrapper(ProcessingStage[DocumentBatch, DocumentBatch]):
     tokenizer_type: str
     max_chars: int
     use_gpu: bool = True
+    _name: str = "crossfit_tokenizer"
 
-    @property
-    def name(self) -> str:
-        return "crossfit_tokenizer"
+    def __post_init__(self):
+        if self.use_gpu:
+            self._resources = Resources(gpu_memory_gb=_get_suggest_memory_for_tokenizer())
+        else:
+            self._resources = Resources(cpus=1.0)
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
 
     def outputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
-
-    @property
-    def resources(self) -> Resources:
-        """Resource requirements for this stage."""
-        if self.use_gpu:
-            return Resources(gpu_memory_gb=_get_suggest_memory_for_tokenizer())
-        else:
-            # Default CPU resources
-            return Resources(cpus=1.0)
 
     def setup(self, _: WorkerMetadata | None = None) -> None:
         # TODO: Do not hardcode this
@@ -149,11 +145,13 @@ class CrossFitTokenizerWrapper(ProcessingStage[DocumentBatch, DocumentBatch]):
             batches = []
 
             for i, chunk in enumerate(chunks):
-                batches.append(DocumentBatch(
-                    task_id=f"{batch.task_id}_{self.name}_{i}",
-                    dataset_name=f"{batch.dataset_name}_{i}",
-                    data=chunk,
-                ))
+                batches.append(
+                    DocumentBatch(
+                        task_id=f"{batch.task_id}_{self.name}_{i}",
+                        dataset_name=f"{batch.dataset_name}_{i}",
+                        data=chunk,
+                    )
+                )
 
             return batches
 
@@ -167,22 +165,16 @@ class CrossFitPredictorWrapper(ProcessingStage[DocumentBatch, DocumentBatch]):
     model_batch_size: int
     pred_output_col: str
     progress_bar: bool
+    _name: str = "crossfit_predictor"
 
-    @property
-    def name(self) -> str:
-        return "crossfit_predictor"
+    def __post_init__(self):
+        self._resources = Resources(gpu_memory_gb=_get_suggest_memory_for_classifier() + 3)
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
 
     def outputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
-
-    @property
-    def resources(self) -> Resources:
-        """Resource requirements for this stage."""
-        # TODO: Check this
-        return Resources(gpu_memory_gb=_get_suggest_memory_for_classifier() + 3)
 
     def process(self, batch: DocumentBatch) -> DocumentBatch | None:
         df = batch.to_pandas()
@@ -316,10 +308,10 @@ class CrossFitLabelerWrapper(ProcessingStage[DocumentBatch, DocumentBatch]):
     cols: list[str]
     suffix: str
     prob_col: str | None = None
+    _name: str = "crossfit_labeler"
 
-    @property
-    def name(self) -> str:
-        return "crossfit_labeler"
+    def __post_init__(self):
+        self._resources = Resources(gpu_memory_gb=_get_suggest_memory_for_classifier() + 3)
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []

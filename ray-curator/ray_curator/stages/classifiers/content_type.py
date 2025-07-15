@@ -110,6 +110,7 @@ class ContentTypeClassifier(DistributedDataClassifier):
         self.labels.sort(key=lambda x: config.label2id[x])
         self.out_dim = len(self.labels)
         self.max_mem_gb = max_mem_gb
+        self._name = "content_type_classifier"
 
         super().__init__(
             labels=self.labels,
@@ -121,10 +122,6 @@ class ContentTypeClassifier(DistributedDataClassifier):
             device_type=device_type,
             autocast=autocast,
         )
-
-    @property
-    def name(self) -> str:
-        return "content_type_classifier"
 
     def setup(self, _: WorkerMetadata | None = None) -> None:
         # Load the Hugging Face model and processor from the cache.

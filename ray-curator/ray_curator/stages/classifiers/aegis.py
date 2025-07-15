@@ -279,6 +279,14 @@ class AegisClassifier(DistributedDataClassifier):
         self.keep_raw_pred = keep_raw_pred
         self.max_mem_gb = max_mem_gb
 
+        if "Defensive" in self.aegis_variant:
+            self._name = "aegis_defensive_classifier"
+        elif "Permissive" in self.aegis_variant:
+            self._name = "aegis_permissive_classifier"
+        else:
+            msg = f"Invalid aegis_variant: {self.aegis_variant}"
+            raise ValueError(msg)
+
         super().__init__(
             labels=self.labels,
             filter_by=filter_by,
@@ -289,16 +297,6 @@ class AegisClassifier(DistributedDataClassifier):
             device_type=device_type,
             autocast=autocast,
         )
-
-    @property
-    def name(self) -> str:
-        if "Defensive" in self.aegis_variant:
-            return "aegis_defensive_classifier"
-        elif "Permissive" in self.aegis_variant:
-            return "aegis_permissive_classifier"
-        else:
-            msg = f"Invalid aegis_variant: {self.aegis_variant}"
-            raise ValueError(msg)
 
     def setup(self, _: WorkerMetadata | None = None) -> None:
         self.config = AegisConfig(
@@ -462,6 +460,7 @@ class InstructionDataGuardClassifier(DistributedDataClassifier):
         self._pred_column = pred_column
         self._prob_column = prob_column
         self.max_mem_gb = max_mem_gb
+        self._name = "instruction_data_guard_classifier"
 
         super().__init__(
             labels=None,
@@ -473,10 +472,6 @@ class InstructionDataGuardClassifier(DistributedDataClassifier):
             device_type=device_type,
             autocast=autocast,
         )
-
-    @property
-    def name(self) -> str:
-        return "instruction_data_guard_classifier"
 
     def setup(self, _: WorkerMetadata | None = None) -> None:
         self.config = AegisConfig(
