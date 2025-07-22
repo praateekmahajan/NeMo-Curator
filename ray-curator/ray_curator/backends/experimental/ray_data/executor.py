@@ -44,17 +44,20 @@ class RayDataExecutor(BaseExecutor):
             return []
 
         register_loguru_serializer()
-        execute_setup_on_node(stages)
-
-        logger.info(f"Setup on node complete for all stages. Starting Ray Data pipeline with {len(stages)} stages")
         # Initialize with initial tasks if provided, otherwise start with EmptyTask
         tasks: list[Task] = initial_tasks if initial_tasks else [EmptyTask]
-
-        # Convert tasks to dataset
-        current_dataset = self._tasks_to_dataset(tasks)
-        logger.info(f"Initial dataset size: {current_dataset.count()}")
-
+        output_tasks: list[Task] = []
         try:
+            # Initialize ray
+            ray.init(ignore_reinit_error=True)
+
+            # Convert tasks to dataset
+            current_dataset = self._tasks_to_dataset(tasks)
+
+            # Execute setup on node for all stages
+            execute_setup_on_node(stages)
+            logger.info(f"Setup on node complete for all stages. Starting Ray Data pipeline with {len(stages)} stages")
+
             # Process through each stage
             for i, stage in enumerate(stages):
                 # TODO: add pipeline level config for verbosity
@@ -69,15 +72,14 @@ class RayDataExecutor(BaseExecutor):
         except Exception as e:
             logger.error(f"Error during pipeline execution: {e}")
             raise
-
         else:
             # Convert final dataset back to tasks
             # TODO: add pipeline configuration to check if user wants to return last stages output to driver
-            logger.info(f"Converting final dataset to tasks -> {current_dataset=}")
-            final_tasks = self._dataset_to_tasks(current_dataset)
-            logger.info(f"Pipeline completed. Final results: {len(final_tasks)} tasks")
-
-            return final_tasks
+            output_tasks = self._dataset_to_tasks(current_dataset)
+            logger.info(f"Pipeline completed. Final results: {len(output_tasks)} tasks")
+        finally:
+            ray.shutdown()
+        return output_tasks
 
     def _tasks_to_dataset(self, tasks: list[Task]) -> Dataset:
         """Convert list of tasks to Ray Data dataset.
