@@ -46,6 +46,7 @@ def shared_ray_cluster():
 
     ray_port = find_free_port()
 
+    # TODO: See if we can use get_client in the future
     ray_process = subprocess.Popen(  # noqa: S603
         [  # noqa: S607
             "ray",

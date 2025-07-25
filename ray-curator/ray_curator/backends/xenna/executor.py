@@ -115,7 +115,6 @@ class XennaExecutor(BaseExecutor):
         logger.info(f"Execution mode: {exec_mode.name}")
 
         try:
-            # Run the pipeline (this will initialize ray)
             register_loguru_serializer()
             ray.init(
                 runtime_env={
@@ -123,12 +122,14 @@ class XennaExecutor(BaseExecutor):
                     "env_vars": {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "0"}
                 },
             )
+            # Run the pipeline (this will re-initialize ray but that'll be a no-op and the ray.init above will take precedence)
             results = pipelines_v1.run_pipeline(pipeline_spec)
             logger.info(f"Pipeline completed successfully with {len(results) if results else 0} output tasks")
         except Exception as e:
             logger.error(f"Pipeline execution failed: {e}")
             raise
         finally:
+            # This ensures we unset all the env vars set above during initalize and kill the pending actors.
             ray.shutdown()
         return results if results else []
 
