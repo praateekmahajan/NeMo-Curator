@@ -6,6 +6,7 @@ from cosmos_xenna.utils.verbosity import VerbosityLevel
 from loguru import logger
 
 from ray_curator.backends.base import BaseExecutor
+from ray_curator.backends.utils import register_loguru_serializer
 from ray_curator.backends.xenna.adapter import create_named_xenna_stage_adapter
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.tasks import EmptyTask, Task
@@ -115,6 +116,13 @@ class XennaExecutor(BaseExecutor):
 
         try:
             # Run the pipeline (this will initialize ray)
+            register_loguru_serializer()
+            ray.init(
+                runtime_env={
+                    # We need to set this env var to avoid ray from setting CUDA_VISIBLE_DEVICES and let xenna do it
+                    "env_vars": {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "0"}
+                },
+            )
             results = pipelines_v1.run_pipeline(pipeline_spec)
             logger.info(f"Pipeline completed successfully with {len(results) if results else 0} output tasks")
         except Exception as e:

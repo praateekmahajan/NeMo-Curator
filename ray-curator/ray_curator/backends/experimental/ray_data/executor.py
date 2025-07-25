@@ -7,10 +7,11 @@ from loguru import logger
 from ray.data import Dataset
 
 from ray_curator.backends.base import BaseExecutor
+from ray_curator.backends.utils import register_loguru_serializer
 from ray_curator.tasks import EmptyTask, Task
 
 from .adapter import RayDataStageAdapter
-from .utils import execute_setup_on_node, register_loguru_serializer
+from .utils import execute_setup_on_node
 
 if TYPE_CHECKING:
     from ray_curator.stages.base import ProcessingStage
@@ -49,7 +50,9 @@ class RayDataExecutor(BaseExecutor):
         output_tasks: list[Task] = []
         try:
             # Initialize ray
-            ray.init(ignore_reinit_error=True)
+            ray.init(
+                ignore_reinit_error=True, runtime_env={"env_vars": {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": ""}}
+            )
 
             # Convert tasks to dataset
             current_dataset = self._tasks_to_dataset(tasks)
