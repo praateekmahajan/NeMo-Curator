@@ -1,10 +1,12 @@
 import json
 import math
+import os
 import re
 from pathlib import Path
 from typing import Any
 
 import pytest
+import ray
 from loguru import logger
 
 from ray_curator.backends.base import BaseExecutor
@@ -192,3 +194,24 @@ class TestBackendIntegrations:
             "add_length_doc_length_1": math.ceil(self.NUM_TEST_FILES / FILES_PER_PARTITION),
             "add_length_doc_length_2": TOTAL_DOCUMENTS,
         }
+
+
+class TestEnvVars:
+    def test_max_limit_env_vars(self, shared_ray_client: None):  # noqa: ARG002
+        """We set these env vars in __init__.py of the package
+
+
+        # TODO: Once GPU is added we can test the env var for RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES
+            So that whoever starts a ray cluster, these env vars are set
+            This allows Xenna to run without failure.
+        """
+
+        @ray.remote
+        def get_env_vars() -> str:
+            return {k: v for k, v in os.environ.items() if k.startswith("RAY_")}
+
+        env_vars = ray.get(get_env_vars.remote())
+
+        for env_var_name in ["RAY_MAX_LIMIT_FROM_API_SERVER", "RAY_MAX_LIMIT_FROM_DATA_SOURCE"]:
+            assert os.environ[env_var_name] == str(40000), f"{env_var_name} is not correctly set on driver"
+            assert env_vars[env_var_name] == str(40000), f"{env_var_name} is not correctly set on ray cluster"

@@ -7,7 +7,6 @@ proper isolation through Ray's actor/task lifecycle management.
 
 import os
 import subprocess
-from pathlib import Path
 
 import pytest
 import ray
@@ -23,7 +22,7 @@ def find_free_port():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def shared_ray_cluster():
+def shared_ray_cluster(tmp_path_factory: pytest.TempPathFactory):
     """Set up a shared Ray cluster for all tests in the session.
 
     This fixture automatically sets up Ray at the beginning of the test session
@@ -37,50 +36,51 @@ def shared_ray_cluster():
     if "RAY_ADDRESS" in os.environ:
         del os.environ["RAY_ADDRESS"]
 
-    # Get the ray-curator directory to add to the working_dir to enable serialization of test modules
-    ray_curator_path = Path(__file__).parent.parent.parent.resolve()
+    # Create a temporary directory for Ray to avoid conflicts with other instances
+    temp_dir = tmp_path_factory.mktemp("ray")
 
     # TODO: Create a cluster with 11 cpus instead of one head node with 11 cpus
     # If we have 6-7 stages all needing 1 cpu, then we atleast need 10 cpus for Xenna / Ray Data to work
     # The 11th CPU is for StageCallCounter
 
     ray_port = find_free_port()
+    dashboard_port = find_free_port()
+    ray_client_server_port = find_free_port()
 
     # TODO: See if we can use get_client in the future
-    ray_process = subprocess.Popen(  # noqa: S603
-        [  # noqa: S607
-            "ray",
-            "start",
-            "--head",
-            "--port",
-            str(ray_port),
-            "--num-cpus",
-            "11",
-            "--num-gpus",
-            "0",
-            "--object-store-memory",
-            str(2 * ONE_GB),
-            "--block",
-        ],
-        env={**os.environ, "RAY_MAX_LIMIT_FROM_API_SERVER": "40000", "RAY_MAX_LIMIT_FROM_DATA_SOURCE": "40000"},
-    )
+    cmd_to_run = [
+        "ray",
+        "start",
+        "--head",
+        "--port",
+        str(ray_port),
+        "--dashboard-port",
+        str(dashboard_port),
+        "--ray-client-server-port",
+        str(ray_client_server_port),
+        "--temp-dir",
+        str(temp_dir),
+        "--num-cpus",
+        "11",
+        "--num-gpus",
+        "0",
+        "--object-store-memory",
+        str(2 * ONE_GB),
+        "--block",
+    ]
 
-    ray.init(
-        address=f"localhost:{ray_port}",
-        ignore_reinit_error=True,
-        log_to_driver=True,
-        local_mode=False,  # Use cluster mode for better testing of distributed features
-        runtime_env={
-            "working_dir": str(ray_curator_path),
-            "excludes": [
-                ".ruff_cache/",
-                "__pycache__/",
-                "ray_curator/examples/*",
-            ],
-        },
+    for k, v in os.environ.items():
+        if k.startswith("RAY_"):
+            logger.info(f"{k}: {v}")
+
+    # Start Ray cluster without --block so it doesn't hang
+    logger.info(f"Running Ray command: {' '.join(cmd_to_run)}")
+    ray_process = subprocess.Popen(  # noqa: S603
+        cmd_to_run,
     )
-    # Get the actual Ray address more reliably
+    logger.info(f"Ran Ray process: {ray_process.pid}")
     ray_address = f"localhost:{ray_port}"
+
     # Set RAY_ADDRESS so Xenna will connect to our cluster
     os.environ["RAY_ADDRESS"] = ray_address
     logger.info(f"Set RAY_ADDRESS for tests to: {ray_address}")
@@ -90,3 +90,29 @@ def shared_ray_cluster():
     # Shutdown Ray after all tests complete
     logger.info("Shutting down Ray cluster")
     ray_process.kill()
+
+
+@pytest.fixture
+def shared_ray_client(shared_ray_cluster: str) -> None:
+    """Initialize Ray client for tests that need Ray API access.
+
+    This fixture should be used by tests that need to call Ray functions
+    like ray.nodes(), ray.available_resources(), etc. Tests that don't
+    need direct Ray API access (like integration tests) should not use
+    this fixture.
+
+    Args:
+        shared_ray_cluster: The Ray cluster address from shared_ray_cluster fixture
+    """
+    ray.init(
+        address=shared_ray_cluster,
+        ignore_reinit_error=True,
+        log_to_driver=True,
+        local_mode=False,  # Use cluster mode for better testing of distributed features
+    )
+
+    yield
+
+    # Shutdown Ray client after test completes
+    logger.info("Shutting down Ray client")
+    ray.shutdown()
