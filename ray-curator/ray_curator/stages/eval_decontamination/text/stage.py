@@ -20,20 +20,22 @@ from typing import Any, Union
 import dask.dataframe as dd
 import pandas as pd
 from dask import delayed
-from nemo_curator.datasets import DocumentDataset
-from nemo_curator.modules.base import BaseModule
-from nemo_curator.tasks.downstream_task import DownstreamTask
 from nemo_curator.utils.distributed_utils import single_partition_write_with_filename
 from nemo_curator.utils.import_utils import gpu_only_import
 from nemo_curator.utils.text_utils import get_words
 
+from ray_curator.stages.base import ProcessingStage
+from ray_curator.tasks import DocumentBatch
+
+from .evalset_base import EvaluationSetBase
+
 cudf = gpu_only_import("cudf")
 
 
-class TaskDecontamination(BaseModule):
+class TaskDecontamination(ProcessingStage[DocumentBatch, DocumentBatch]):
     def __init__(  # noqa: PLR0913
         self,
-        tasks: DownstreamTask | Iterable[DownstreamTask],
+        evalsets: EvaluationSetBase | Iterable[EvaluationSetBase],
         text_field: str = "text",
         max_ngram_size: int = 13,
         max_matches: int = 10,
@@ -53,9 +55,9 @@ class TaskDecontamination(BaseModule):
             removed_dir: If not None, the documents split too many times will be written to this directory using the filename in the dataset.
         """
         super().__init__(input_backend="pandas")
-        if isinstance(tasks, DownstreamTask):
-            tasks = [tasks]
-        self.tasks = tasks
+        if isinstance(evalsets, EvaluationSetBase):
+            evalsets = [evalsets]
+        self.evalsets = evalsets
         self.text_field = text_field
         self.max_ngram_size = max_ngram_size
         self.max_matches = max_matches
@@ -64,14 +66,11 @@ class TaskDecontamination(BaseModule):
         self.max_splits = max_splits
         self.removed_dir = removed_dir
 
-    def call(self, dataset: DocumentDataset) -> DocumentDataset:
-        # Convert the dataframe to delayed objects for complex operations
-        original_meta = dataset.df.dtypes.to_dict()
-        delayed_dataset = dataset.df.to_delayed()
-
+    def process(self, task: DocumentBatch) -> DocumentBatch:
+        df = task.to_pandas()
         # Perform task decontamintation
         task_ngrams = self.prepare_task_ngram_count()
-        found_result = self._find_matching_ngrams(task_ngrams, delayed_dataset)
+        found_result = self._find_matching_ngrams(task_ngrams, df)
         matched_ngrams, ngram_freq = (
             found_result["matched-ngrams"],
             found_result["ngrams-freq"],
@@ -79,7 +78,7 @@ class TaskDecontamination(BaseModule):
         delayed_removed_dataset = self._remove_matching_ngrams(matched_ngrams, ngram_freq, delayed_dataset)
 
         # Restore the dataset to its original format
-        return DocumentDataset(dataset_df=dd.from_delayed(delayed_removed_dataset, meta=original_meta))
+        return DocumentBatch(dataset_df=dd.from_delayed(delayed_removed_dataset, meta=original_meta))
 
     @staticmethod
     def _merge_task_ngrams(first: dict[str, int], second: dict[str, int]) -> dict[str, int]:
@@ -104,17 +103,9 @@ class TaskDecontamination(BaseModule):
 
         return sorted(ngrams_freq.items(), key=lambda item: item[0])
 
-    def find_matching_ngrams(self, task_ngrams: dict, dataset: DocumentDataset) -> dict:
-        delayed_dataset = dataset.df.to_delayed()
-
-        return self._find_matching_ngrams(task_ngrams, delayed_dataset)
-
-    def _find_matching_ngrams(self, task_ngrams: dict, delayed_dataset: list[dd.DataFrame]) -> dict:
-        task_ngrams_frequency_sorted = delayed(self._compute_ngram_freq_sorted)(task_ngrams)
-        delayed_counts = [
-            delayed(self._find_ngrams_partition)(partition, task_ngrams, task_ngrams_frequency_sorted)
-            for partition in delayed_dataset
-        ]
+    def find_matching_ngrams(self, task_ngrams: dict, delayed_dataset: pd.DataFrame) -> dict:
+        task_ngrams_frequency_sorted = self._compute_ngram_freq_sorted(task_ngrams)
+        delayed_counts = [self._find_ngrams_partition(delayed_dataset, task_ngrams, task_ngrams_frequency_sorted)]
         combined_counts = delayed(reduce)(self._merge_counts, delayed_counts)
 
         return delayed(self._format_matching_ngrams_result)(combined_counts, task_ngrams_frequency_sorted)
@@ -264,13 +255,13 @@ class TaskDecontamination(BaseModule):
         return True
 
     def remove_matching_ngrams(
-        self, matched_ngrams: dict, ngram_freq: list[tuple], dataset: DocumentDataset
-    ) -> DocumentDataset:
+        self, matched_ngrams: dict, ngram_freq: list[tuple], dataset: DocumentBatch
+    ) -> DocumentBatch:
         original_meta = dataset.df.dtypes.to_dict()
         delayed_dataset = dataset.df.to_delayed()
         delayed_removed_dataset = self._remove_matching_ngrams(matched_ngrams, ngram_freq, delayed_dataset)
 
-        return DocumentDataset(dataset_df=dd.from_delayed(delayed_removed_dataset, meta=original_meta))
+        return DocumentBatch(dataset_df=dd.from_delayed(delayed_removed_dataset, meta=original_meta))
 
     def _remove_matching_ngrams(
         self, matched_ngrams: dict, ngram_freq: list[tuple], delayed_dataset: list[dd.DataFrame]

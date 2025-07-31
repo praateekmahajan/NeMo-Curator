@@ -15,11 +15,13 @@
 import json
 
 from datasets import load_dataset
-from nemo_curator.tasks.downstream_task import DownstreamTask
-from nemo_curator.utils.file_utils import get_all_files_paths_under
+
+from ray_curator.utils.file_utils import get_all_files_paths_under
+
+from .evalset_base import EvaluationSetBase
 
 
-class Race(DownstreamTask):
+class RaceEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "race"
@@ -35,7 +37,7 @@ class Race(DownstreamTask):
         return self.ngrams
 
 
-class Squad(DownstreamTask):
+class SquadEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "squad"
@@ -51,7 +53,7 @@ class Squad(DownstreamTask):
         return self.ngrams
 
 
-class ArcEasy(DownstreamTask):
+class ArcEasyEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "arceasy"
@@ -67,7 +69,7 @@ class ArcEasy(DownstreamTask):
         return self.ngrams
 
 
-class ArcChallenge(DownstreamTask):
+class ArcChallengeEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "arcchallenge"
@@ -83,7 +85,7 @@ class ArcChallenge(DownstreamTask):
         return self.ngrams
 
 
-class OpenBookQA(DownstreamTask):
+class OpenBookQAEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "openbookqa"
@@ -99,7 +101,7 @@ class OpenBookQA(DownstreamTask):
         return self.ngrams
 
 
-class BoolQ(DownstreamTask):
+class BoolQEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "boolq"
@@ -115,7 +117,7 @@ class BoolQ(DownstreamTask):
         return self.ngrams
 
 
-class Copa(DownstreamTask):
+class CopaEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "copa"
@@ -131,7 +133,7 @@ class Copa(DownstreamTask):
         return self.ngrams
 
 
-class RTE(DownstreamTask):
+class RTEEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "rte"
@@ -147,7 +149,7 @@ class RTE(DownstreamTask):
         return self.ngrams
 
 
-class MultiRC(DownstreamTask):
+class MultiRCEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "multirc"
@@ -163,7 +165,7 @@ class MultiRC(DownstreamTask):
         return self.ngrams
 
 
-class WSC(DownstreamTask):
+class WSCEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "wsc"
@@ -179,7 +181,7 @@ class WSC(DownstreamTask):
         return self.ngrams
 
 
-class CB(DownstreamTask):
+class CBEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "cb"
@@ -195,7 +197,7 @@ class CB(DownstreamTask):
         return self.ngrams
 
 
-class ANLI(DownstreamTask):
+class ANLIEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "anli"
@@ -219,7 +221,7 @@ class ANLI(DownstreamTask):
         return self.ngrams
 
 
-class Record(DownstreamTask):
+class RecordEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "record"
@@ -235,7 +237,7 @@ class Record(DownstreamTask):
         return self.ngrams
 
 
-class COQA(DownstreamTask):
+class COQAEvalSet(EvaluationSetBase):
     def __init__(self, file_path: str | None = None, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "coqa"
@@ -262,7 +264,7 @@ class COQA(DownstreamTask):
         return self.ngrams
 
 
-class TriviaQA(DownstreamTask):
+class TriviaQAEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "trivia_qa"
@@ -278,7 +280,7 @@ class TriviaQA(DownstreamTask):
         return self.ngrams
 
 
-class Quac(DownstreamTask):
+class QuacEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "quac"
@@ -299,7 +301,7 @@ class Quac(DownstreamTask):
         return self.ngrams
 
 
-class WebQA(DownstreamTask):
+class WebQAEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "webqa"
@@ -315,7 +317,7 @@ class WebQA(DownstreamTask):
         return self.ngrams
 
 
-class Drop(DownstreamTask):
+class DropEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "drop"
@@ -331,7 +333,7 @@ class Drop(DownstreamTask):
         return self.ngrams
 
 
-class WiC(DownstreamTask):
+class WiCEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "wic"
@@ -351,16 +353,13 @@ class WiC(DownstreamTask):
         return self.ngrams
 
 
-class MMLU(DownstreamTask):
-    def __init__(self, path: str | None = None, min_ngram_size: int = 8, max_ngram_size: int = 13):
+class MMLUEvalSet(EvaluationSetBase):
+    def __init__(self, path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "mmlu"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._path = path
-        if self._path is None:
-            msg = "Must provide path that contain MMLU task data in JSONL format"
-            raise ValueError(msg)
 
     def generate_ngrams(self) -> dict[str, int]:
         for ifile in get_all_files_paths_under(self._path):
@@ -373,16 +372,13 @@ class MMLU(DownstreamTask):
         return self.ngrams
 
 
-class BigBenchHard(DownstreamTask):
-    def __init__(self, path: str | None = None, min_ngram_size: int = 8, max_ngram_size: int = 13):
+class BigBenchHardEvalSet(EvaluationSetBase):
+    def __init__(self, path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "bigbench_hard"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._path = path
-        if self._path is None:
-            msg = "Must provide path that contain BigBenchHard task data in JSONL format"
-            raise ValueError(msg)
 
     def generate_ngrams(self) -> dict[str, int]:
         for ifile in get_all_files_paths_under(self._path):
@@ -395,16 +391,13 @@ class BigBenchHard(DownstreamTask):
         return self.ngrams
 
 
-class BigBenchLight(DownstreamTask):
-    def __init__(self, path: str | None = None, min_ngram_size: int = 8, max_ngram_size: int = 13):
+class BigBenchLightEvalSet(EvaluationSetBase):
+    def __init__(self, path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "bigbench_light"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._path = path
-        if self._path is None:
-            msg = "Must provide path that contain BigBenchLight task data in JSONL format"
-            raise ValueError(msg)
 
     def generate_ngrams(self) -> dict[str, int]:
         for ifile in get_all_files_paths_under(self._path):
@@ -417,16 +410,13 @@ class BigBenchLight(DownstreamTask):
         return self.ngrams
 
 
-class Multilingual(DownstreamTask):
-    def __init__(self, path: str | None = None, min_ngram_size: int = 8, max_ngram_size: int = 13):
+class MultilingualEvalSet(EvaluationSetBase):
+    def __init__(self, path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "multilingual"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._path = path
-        if self._path is None:
-            msg = "Must provide path to multilingual task data in JSONL format"
-            raise ValueError(msg)
 
     def generate_ngrams(self) -> dict[str, int]:
         for ifile in get_all_files_paths_under(self._path):
@@ -439,7 +429,7 @@ class Multilingual(DownstreamTask):
         return self.ngrams
 
 
-class PIQA(DownstreamTask):
+class PIQAEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "piqa"
@@ -455,7 +445,7 @@ class PIQA(DownstreamTask):
         return self.ngrams
 
 
-class Winogrande(DownstreamTask):
+class WinograndeEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "winogrande"
@@ -475,7 +465,7 @@ class Winogrande(DownstreamTask):
         return self.ngrams
 
 
-class Lambada(DownstreamTask):
+class LambadaEvalSet(EvaluationSetBase):
     def __init__(self, file_path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "lambada"
@@ -496,7 +486,7 @@ class Lambada(DownstreamTask):
         return self.ngrams
 
 
-class NumDasc(DownstreamTask):
+class NumDascEvalSet(EvaluationSetBase):
     def __init__(self, n: int, file_path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._n = n
@@ -518,7 +508,7 @@ class NumDasc(DownstreamTask):
         return self.ngrams
 
 
-class StoryCloze(DownstreamTask):
+class StoryClozeEvalSet(EvaluationSetBase):
     def __init__(self, file_path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
         super().__init__()
         self._task_name = "story_cloze"

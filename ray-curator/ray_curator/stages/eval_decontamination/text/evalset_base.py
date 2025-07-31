@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from nemo_curator.utils.text_utils import get_words
 
 
-class DownstreamTask(ABC):
+class EvaluationSetBase(ABC):
     def __init__(self):
         super().__init__()
         self._task_name = None
@@ -48,11 +48,12 @@ class DownstreamTask(ABC):
                 self._ngrams[seq] = 0
 
 
-def import_task(task_path: str) -> DownstreamTask:
+def import_task(task_path: str) -> EvaluationSetBase:
+    # TODO: See if we need this
     module_path, task_name = task_path.rsplit(".", 1)
     task_module = importlib.import_module(module_path)
     task_class = getattr(task_module, task_name)
-    if not issubclass(task_class, DownstreamTask):
+    if not issubclass(task_class, EvaluationSetBase):
         msg = (
             f"Input iterator {task_class.__name__} "
             "must be derived from DownstreamTask"
