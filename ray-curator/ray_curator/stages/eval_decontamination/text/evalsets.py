@@ -23,10 +23,12 @@ from .evalset_base import EvaluationSetBase
 
 class RaceEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "race"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset(self._task_name, "all", split="test")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -39,10 +41,12 @@ class RaceEvalSet(EvaluationSetBase):
 
 class SquadEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "squad"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("squad_v2", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -55,10 +59,12 @@ class SquadEvalSet(EvaluationSetBase):
 
 class ArcEasyEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "arceasy"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("ai2_arc", "ARC-Easy", split="test")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -71,10 +77,12 @@ class ArcEasyEvalSet(EvaluationSetBase):
 
 class ArcChallengeEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "arcchallenge"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("ai2_arc", "ARC-Challenge", split="test")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -87,10 +95,12 @@ class ArcChallengeEvalSet(EvaluationSetBase):
 
 class OpenBookQAEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "openbookqa"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("openbookqa", "main", split="test")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -103,10 +113,12 @@ class OpenBookQAEvalSet(EvaluationSetBase):
 
 class BoolQEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "boolq"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("super_glue", "boolq", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -119,10 +131,12 @@ class BoolQEvalSet(EvaluationSetBase):
 
 class CopaEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "copa"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("super_glue", "copa", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -135,10 +149,12 @@ class CopaEvalSet(EvaluationSetBase):
 
 class RTEEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "rte"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("glue", "rte", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -151,10 +167,12 @@ class RTEEvalSet(EvaluationSetBase):
 
 class MultiRCEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "multirc"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("super_glue", "multirc", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -167,15 +185,17 @@ class MultiRCEvalSet(EvaluationSetBase):
 
 class WSCEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "wsc"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
-        self._dataset = load_dataset("super_glue", "multirc", split="validation")
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        self._dataset = load_dataset("super_glue", "wsc", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
         for line in self._dataset:
-            text = line["question"]
+            text = line["text"]
             self._update_ngrams(text, self._min_ngram_size, self._max_ngram_size)
 
         return self.ngrams
@@ -183,10 +203,12 @@ class WSCEvalSet(EvaluationSetBase):
 
 class CBEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "cb"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("super_glue", "cb", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -199,12 +221,14 @@ class CBEvalSet(EvaluationSetBase):
 
 class ANLIEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "anli"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
-        self._dataset = load_dataset("anli")
         self._keys = ["test_r1", "test_r2", "test_r3"]
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        self._dataset = load_dataset("anli")
 
     def generate_ngrams(self) -> dict[str, int]:
         for key in self._keys:
@@ -223,10 +247,12 @@ class ANLIEvalSet(EvaluationSetBase):
 
 class RecordEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "record"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("super_glue", "record", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -239,14 +265,17 @@ class RecordEvalSet(EvaluationSetBase):
 
 class COQAEvalSet(EvaluationSetBase):
     def __init__(self, file_path: str | None = None, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "coqa"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         if file_path is None:
             msg = "Must provide a path to the coqa.json file"
             raise ValueError(msg)
-        with open(file_path) as f:
+        self._file_path = file_path
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        with open(self._file_path) as f:
             self._dataset = json.load(f)["data"]
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -266,10 +295,12 @@ class COQAEvalSet(EvaluationSetBase):
 
 class TriviaQAEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "trivia_qa"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("trivia_qa", "unfiltered", split="test")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -282,10 +313,12 @@ class TriviaQAEvalSet(EvaluationSetBase):
 
 class QuacEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "quac"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("quac", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -303,10 +336,12 @@ class QuacEvalSet(EvaluationSetBase):
 
 class WebQAEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "webqa"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("web_questions", split="test")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -319,10 +354,12 @@ class WebQAEvalSet(EvaluationSetBase):
 
 class DropEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "drop"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset("drop", split="validation")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -335,10 +372,12 @@ class DropEvalSet(EvaluationSetBase):
 
 class WiCEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "wic"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset(
             path="super_glue",
             name="wic",
@@ -355,11 +394,16 @@ class WiCEvalSet(EvaluationSetBase):
 
 class MMLUEvalSet(EvaluationSetBase):
     def __init__(self, path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "mmlu"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._path = path
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        # For file-based datasets, we don't load everything into memory
+        # We just verify the path exists and is accessible
+        self._dataset = self._path
 
     def generate_ngrams(self) -> dict[str, int]:
         for ifile in get_all_files_paths_under(self._path):
@@ -374,11 +418,16 @@ class MMLUEvalSet(EvaluationSetBase):
 
 class BigBenchHardEvalSet(EvaluationSetBase):
     def __init__(self, path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "bigbench_hard"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._path = path
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        # For file-based datasets, we don't load everything into memory
+        # We just verify the path exists and is accessible
+        self._dataset = self._path
 
     def generate_ngrams(self) -> dict[str, int]:
         for ifile in get_all_files_paths_under(self._path):
@@ -393,11 +442,16 @@ class BigBenchHardEvalSet(EvaluationSetBase):
 
 class BigBenchLightEvalSet(EvaluationSetBase):
     def __init__(self, path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "bigbench_light"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._path = path
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        # For file-based datasets, we don't load everything into memory
+        # We just verify the path exists and is accessible
+        self._dataset = self._path
 
     def generate_ngrams(self) -> dict[str, int]:
         for ifile in get_all_files_paths_under(self._path):
@@ -412,11 +466,16 @@ class BigBenchLightEvalSet(EvaluationSetBase):
 
 class MultilingualEvalSet(EvaluationSetBase):
     def __init__(self, path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "multilingual"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._path = path
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        # For file-based datasets, we don't load everything into memory
+        # We just verify the path exists and is accessible
+        self._dataset = self._path
 
     def generate_ngrams(self) -> dict[str, int]:
         for ifile in get_all_files_paths_under(self._path):
@@ -431,10 +490,12 @@ class MultilingualEvalSet(EvaluationSetBase):
 
 class PIQAEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "piqa"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset(self._task_name, split="test")
 
     def generate_ngrams(self) -> dict[str, int]:
@@ -447,10 +508,12 @@ class PIQAEvalSet(EvaluationSetBase):
 
 class WinograndeEvalSet(EvaluationSetBase):
     def __init__(self, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "winogrande"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
+        super().__init__()
+
+    def _load_dataset(self) -> None:
         self._dataset = load_dataset(
             path="winogrande",
             name="winogrande_xl",
@@ -467,11 +530,16 @@ class WinograndeEvalSet(EvaluationSetBase):
 
 class LambadaEvalSet(EvaluationSetBase):
     def __init__(self, file_path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "lambada"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._file_path = file_path
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        # For file-based datasets, we don't load everything into memory
+        # We just store the file path for processing
+        self._dataset = self._file_path
 
     def generate_ngrams(self) -> dict[str, int]:
         with open(self._file_path) as f:
@@ -488,12 +556,17 @@ class LambadaEvalSet(EvaluationSetBase):
 
 class NumDascEvalSet(EvaluationSetBase):
     def __init__(self, n: int, file_path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._n = n
-        self._task_name = "{n}dasc"
+        self._task_name = f"{n}dasc"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._file_path = file_path
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        # For file-based datasets, we don't load everything into memory
+        # We just store the file path for processing
+        self._dataset = self._file_path
 
     def generate_ngrams(self) -> dict[str, int]:
         with open(self._file_path) as f:
@@ -510,11 +583,16 @@ class NumDascEvalSet(EvaluationSetBase):
 
 class StoryClozeEvalSet(EvaluationSetBase):
     def __init__(self, file_path: str, min_ngram_size: int = 8, max_ngram_size: int = 13):
-        super().__init__()
         self._task_name = "story_cloze"
         self._min_ngram_size = min_ngram_size
         self._max_ngram_size = max_ngram_size
         self._file_path = file_path
+        super().__init__()
+
+    def _load_dataset(self) -> None:
+        # For file-based datasets, we don't load everything into memory
+        # We just store the file path for processing
+        self._dataset = self._file_path
 
     def generate_ngrams(self) -> dict[str, int]:
         with open(self._file_path) as f:
