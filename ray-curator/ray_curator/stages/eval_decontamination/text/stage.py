@@ -14,8 +14,6 @@
 
 from collections import defaultdict
 from collections.abc import Iterable
-
-# cudf = gpu_only_import("cudf")
 from dataclasses import dataclass
 from functools import partial, reduce
 
@@ -24,13 +22,10 @@ from loguru import logger
 
 from ray_curator.backends.base import NodeInfo, WorkerMetadata
 from ray_curator.stages.base import ProcessingStage
+from ray_curator.stages.utils.text_utils import get_words
 from ray_curator.tasks import DocumentBatch, Task
 
 from .evalset_base import EvaluationSetBase
-
-# from nemo_curator.utils.distributed_utils import single_partition_write_with_filename
-# from nemo_curator.utils.import_utils import gpu_only_import
-from .text_utils import get_words
 
 
 @dataclass
@@ -91,9 +86,7 @@ class EvalSetNGramFrequencyStage(ProcessingStage[DocumentBatch, NGramFrequencyTa
         return first
 
     def setup(self, _1: NodeInfo | None = None, _2: WorkerMetadata | None = None) -> None:
-        self.eval_set_ngrams = reduce(
-            self._merge_eval_set_ngrams, [eval_set.ngrams for eval_set in self.eval_sets]
-        )
+        self.eval_set_ngrams = reduce(self._merge_eval_set_ngrams, [eval_set.ngrams for eval_set in self.eval_sets])
         self.eval_set_ngrams_frequency_sorted = self._compute_ngram_freq_sorted(self.eval_set_ngrams)
 
     def process(self, task: DocumentBatch) -> NGramFrequencyTask:

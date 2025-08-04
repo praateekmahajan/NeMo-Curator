@@ -15,7 +15,7 @@
 import importlib
 from abc import ABC, abstractmethod
 
-from .text_utils import get_words
+from ray_curator.stages.utils.text_utils import get_words
 
 
 class EvaluationSetBase(ABC):
