@@ -12,17 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .parallel_construction import (
-    construct_evalsets_batched,
-    construct_evalsets_parallel,
-    parallel_evalsets,
-)
+from .evalset_base import EvaluationSetBase
+from .evalset_builder import ParallelEvalSetBuilder, SequentialEvalSetBuilder
 from .stage import EvalSetNGramFrequencyStage, EvalSetNGramRemovalStage
 
 __all__ = [
     "EvalSetNGramFrequencyStage",
     "EvalSetNGramRemovalStage",
-    "construct_evalsets_batched",
-    "construct_evalsets_parallel",
-    "parallel_evalsets",
+    "EvaluationSetBase",
+    "ParallelEvalSetBuilder",
+    "SequentialEvalSetBuilder",
 ]

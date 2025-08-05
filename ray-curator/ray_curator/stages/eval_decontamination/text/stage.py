@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from collections import defaultdict
-from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import partial, reduce
 
@@ -24,8 +23,6 @@ from ray_curator.backends.base import NodeInfo, WorkerMetadata
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.utils.text_utils import get_words
 from ray_curator.tasks import DocumentBatch, Task
-
-from .evalset_base import EvaluationSetBase
 
 
 @dataclass
@@ -49,7 +46,8 @@ class NGramFrequencyTask(Task[dict[str, int]]):
 class EvalSetNGramFrequencyStage(ProcessingStage[DocumentBatch, NGramFrequencyTask]):
     def __init__(  # noqa: PLR0913
         self,
-        eval_sets: EvaluationSetBase | Iterable[EvaluationSetBase],
+        eval_set_ngrams: dict[str, int],
+        eval_set_ngrams_frequency_sorted: list[tuple[int, int]],
         text_field: str = "text",
         max_ngram_size: int = 13,
         min_document_length: int = 200,
@@ -68,34 +66,24 @@ class EvalSetNGramFrequencyStage(ProcessingStage[DocumentBatch, NGramFrequencyTa
             max_splits: The maximum number of times a document may be split before being entirely discarded.
             removed_dir: If not None, the documents split too many times will be written to this directory using the filename in the dataset.
         """
-        if isinstance(eval_sets, EvaluationSetBase):
-            eval_sets = [eval_sets]
-        self.eval_sets = eval_sets
+        self.eval_set_ngrams = eval_set_ngrams
+        self.eval_set_ngrams_frequency_sorted = eval_set_ngrams_frequency_sorted
+
         self.text_field = text_field
         self.max_ngram_size = max_ngram_size
         self.min_document_length = min_document_length
         self.remove_char_each_side = remove_char_each_side
         self.max_splits = max_splits
         self.removed_dir = removed_dir
-        self.eval_set_ngrams: dict[str, int] | None = None
-        self.eval_set_ngrams_frequency_sorted: list[tuple[int, int]] | None = None
 
     @staticmethod
     def _merge_eval_set_ngrams(first: dict[str, int], second: dict[str, int]) -> dict[str, int]:
         first.update(second)
         return first
 
-    def setup(self, _1: NodeInfo | None = None, _2: WorkerMetadata | None = None) -> None:
-        self.eval_set_ngrams = reduce(self._merge_eval_set_ngrams, [eval_set.ngrams for eval_set in self.eval_sets])
-        self.eval_set_ngrams_frequency_sorted = self._compute_ngram_freq_sorted(self.eval_set_ngrams)
-
     def process(self, task: DocumentBatch) -> NGramFrequencyTask:
         logger.info(f"Processing task {task.task_id} with {task.num_items} items")
         # This is the only part that needs to be done on this
-        if self.eval_set_ngrams is None:
-            msg = "Eval set ngrams not found. Please call setup() first."
-            raise ValueError(msg)
-
         found_result = self._find_ngrams_task(task, self.eval_set_ngrams, self.eval_set_ngrams_frequency_sorted)
         return NGramFrequencyTask(
             data={
