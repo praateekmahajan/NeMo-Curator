@@ -28,7 +28,6 @@ def main() -> int:
     )
     # TODO: We need to figure out how to get number of num_output_partitions for FilePartitioningStage
     # at runtime
-    import ray
     ray.init()
 
     executor = RayActorPoolExecutor(
@@ -95,7 +94,6 @@ if __name__ == "__main__":
         "--embedding-col", type=str, default="embedding", help="Name of the embedding column in the parquet files"
     )
     parser.add_argument("--n-clusters", type=int, default=10, help="Number of clusters to create")
-
 
     parser.add_argument(
         "--file-extensions", nargs="+", default=[".parquet"], help="File extensions to include (default: ['.parquet'])"
