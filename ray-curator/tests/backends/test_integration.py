@@ -13,7 +13,6 @@ from ray_curator.backends.base import BaseExecutor
 from ray_curator.backends.experimental.ray_actor import RayActorExecutor
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 from ray_curator.backends.experimental.ray_data import RayDataExecutor
-from ray_curator.backends.xenna import XennaExecutor
 from ray_curator.tasks import FileGroupTask
 
 from .utils import (

@@ -60,13 +60,7 @@ class RayActorPoolStageAdapter(BaseStageAdapter):
 
         # Use the object coordinator as the owner for the results
         # so that if this actor is killed, then the task reference lives
-        return [
-            ray.put(
-                result,
-                _owner=self.object_coordinator
-            )
-            for result in results
-        ]
+        return [ray.put(result, _owner=self.object_coordinator) for result in results]
 
     def get_batch_size(self) -> int:
         """Get the batch size for this stage."""

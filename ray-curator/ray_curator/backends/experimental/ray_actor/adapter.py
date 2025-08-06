@@ -67,7 +67,7 @@ class RayActorStageAdapter(BaseStageAdapter):
 
         Creates NodeInfo and WorkerMetadata objects with meaningful information
         from Ray's runtime context, similar to how Xenna does it.
-        
+
         Note: This method is not used in the current implementation since we use
         the Ray Data pattern of calling setup_on_node before actor creation.
         """

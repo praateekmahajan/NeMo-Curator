@@ -12,8 +12,8 @@ from loguru import logger
 
 from ray_curator.backends.base import BaseExecutor
 from ray_curator.backends.utils import register_loguru_serializer
-from ..ray_data.utils import execute_setup_on_node
 
+from ..ray_data.utils import execute_setup_on_node
 from .adapter import RayActorStageAdapter
 from .object_coordinator import ObjectStoreCoordinator
 
@@ -67,7 +67,9 @@ class RayActorExecutor(BaseExecutor):
 
             # Execute setup on node for all stages BEFORE processing begins
             execute_setup_on_node(stages)
-            logger.info(f"Setup on node complete for all stages. Starting Ray Actor pipeline with {len(stages)} stages")
+            logger.info(
+                f"Setup on node complete for all stages. Starting Ray Actor pipeline with {len(stages)} stages"
+            )
 
             # Initialize with initial tasks owned by coordinator to establish ownership
             if initial_tasks:
@@ -130,7 +132,7 @@ class RayActorExecutor(BaseExecutor):
         available_resources = ray.available_resources()
         available_cpus = available_resources.get("CPU", 0)
         available_gpus = available_resources.get("GPU", 0)
-        
+
         # Reserve resources for ObjectStoreCoordinator, StageCallCounter, and system overhead
         reserved_cpus = 3.0  # 1 for ObjectStoreCoordinator + 1 for StageCallCounter + 1 for system
         available_cpus = max(0, available_cpus - reserved_cpus)

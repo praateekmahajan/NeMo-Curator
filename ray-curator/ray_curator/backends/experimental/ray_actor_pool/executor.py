@@ -22,7 +22,7 @@ _LARGE_INT = 2**31 - 1
 
 class RayActorPoolExecutor(BaseExecutor):
     """Ray-based executor using ActorPool for better resource management.
-    
+
     This executor:
     1. Creates a pool of actors per stage using Ray's ActorPool
     2. Uses map_unordered for better load balancing and fault tolerance
@@ -38,11 +38,11 @@ class RayActorPoolExecutor(BaseExecutor):
 
     def execute(self, stages: list["ProcessingStage"], initial_tasks: list[Task] | None = None) -> Any:
         """Execute the pipeline stages using ActorPool.
-        
+
         Args:
             stages: List of processing stages to execute
             initial_tasks: Initial tasks to process (can be None for empty start)
-            
+
         Returns:
             List of final processed tasks
         """
@@ -64,7 +64,9 @@ class RayActorPoolExecutor(BaseExecutor):
 
             # Execute setup on node for all stages BEFORE processing begins
             execute_setup_on_node(stages)
-            logger.info(f"Setup on node complete for all stages. Starting Ray Actor Pool pipeline with {len(stages)} stages")
+            logger.info(
+                f"Setup on node complete for all stages. Starting Ray Actor Pool pipeline with {len(stages)} stages"
+            )
 
             # Initialize with initial tasks owned by coordinator to establish ownership
             if initial_tasks:
@@ -126,14 +128,10 @@ class RayActorPoolExecutor(BaseExecutor):
         available_cpus = max(0, available_cpus - reserved_cpus)
 
         # Calculate max actors based on CPU constraints
-        max_actors_cpu = (
-            int(available_cpus // stage.resources.cpus) if stage.resources.cpus > 0 else _LARGE_INT
-        )
+        max_actors_cpu = int(available_cpus // stage.resources.cpus) if stage.resources.cpus > 0 else _LARGE_INT
 
         # Calculate max actors based on GPU constraints
-        max_actors_gpu = (
-            int(available_gpus // stage.resources.gpus) if stage.resources.gpus > 0 else _LARGE_INT
-        )
+        max_actors_gpu = int(available_gpus // stage.resources.gpus) if stage.resources.gpus > 0 else _LARGE_INT
 
         # Take the minimum constraint
         max_actors_resources = min(max_actors_cpu, max_actors_gpu)
@@ -158,8 +156,7 @@ class RayActorPoolExecutor(BaseExecutor):
         actors = []
         for _ in range(num_actors):
             actor = RayActorPoolStageAdapter.options(
-                num_cpus=stage.resources.cpus,
-                num_gpus=stage.resources.gpus
+                num_cpus=stage.resources.cpus, num_gpus=stage.resources.gpus
             ).remote(stage, self.object_coordinator)
             actors.append(actor)
 
@@ -168,7 +165,9 @@ class RayActorPoolExecutor(BaseExecutor):
 
         return ActorPool(actors)
 
-    def _process_stage_with_pool(self, actor_pool: ActorPool, _stage: "ProcessingStage", task_refs: list[ray.ObjectRef]) -> list[ray.ObjectRef]:
+    def _process_stage_with_pool(
+        self, actor_pool: ActorPool, _stage: "ProcessingStage", task_refs: list[ray.ObjectRef]
+    ) -> list[ray.ObjectRef]:
         """Process all tasks through the stage using ActorPool but keeping ObjectRefs."""
         if not task_refs:
             return []
@@ -212,13 +211,13 @@ class RayActorPoolExecutor(BaseExecutor):
 
     def _get_next_objectref_unordered(self, actor_pool: ActorPool) -> list[ray.ObjectRef]:
         """Get the next result from ActorPool without materializing ObjectRefs.
-        
+
         This bypasses ActorPool's built-in ray.get() call to keep results as ObjectRefs.
         """
         if not actor_pool.has_next():
             msg = "No more results to get"
             raise StopIteration(msg)
-            
+
         # Wait for any task to complete (similar to get_next_unordered but without ray.get)
         res, _ = ray.wait(list(actor_pool._future_to_actor), num_returns=1, timeout=None)
         if res:
@@ -226,13 +225,13 @@ class RayActorPoolExecutor(BaseExecutor):
         else:
             msg = "Failed to get result from actor pool"
             raise RuntimeError(msg)
-            
+
         # Get the actor and clean up tracking
         i, actor = actor_pool._future_to_actor.pop(future)
         actor_pool._return_actor(actor)
         del actor_pool._index_to_future[i]
         actor_pool._next_return_index = max(actor_pool._next_return_index, i + 1)
-        
+
         # Return the ObjectRef directly instead of calling ray.get(future)
         # The future is the result from process_task_batch.remote() which returns list[ray.ObjectRef]
         return future
