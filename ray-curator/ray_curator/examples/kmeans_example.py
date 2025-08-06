@@ -4,6 +4,7 @@
 import argparse
 import sys
 
+import ray
 from loguru import logger
 
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
@@ -25,11 +26,22 @@ def main() -> int:
     pipeline = Pipeline(
         name="kmeans_clustering_pipeline", description="Pipeline for K-means clustering on document embeddings"
     )
+    # TODO: We need to figure out how to get number of num_output_partitions for FilePartitioningStage
+    # at runtime
+    import ray
+    ray.init()
+
+    executor = RayActorPoolExecutor(
+        config={
+            "reserved_cpus": 1.0,  # Reserve some CPUs for system overhead
+            "reserved_gpus": 0.0,
+        }
+    )
 
     # Add FilePartitioningStage
     file_partitioning_stage = FilePartitioningStage(
         file_paths=args.input_path,
-        files_per_partition=args.files_per_partition,
+        num_output_partitions=ray.available_resources()["GPU"] - executor.config["reserved_gpus"],
         file_extensions=args.file_extensions,
     )
     pipeline.add_stage(file_partitioning_stage)
@@ -46,13 +58,6 @@ def main() -> int:
     logger.info(f"Pipeline created with {len(pipeline.stages)} stages")
 
     # Create executor - KMeansStage requires RAFT, so we use RayActorPoolExecutor
-    executor = RayActorPoolExecutor(
-        config={
-            "reserved_cpus": 1.0,  # Reserve some CPUs for system overhead
-            "reserved_gpus": 0.0,
-        }
-    )
-
     try:
         logger.info("Executing pipeline...")
         results = pipeline.run(executor)
@@ -91,13 +96,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--n-clusters", type=int, default=10, help="Number of clusters to create")
 
-    # Optional arguments
-    parser.add_argument(
-        "--files-per-partition",
-        type=int,
-        default=1,
-        help="Number of files per partition (default: all files in one partition)",
-    )
+
     parser.add_argument(
         "--file-extensions", nargs="+", default=[".parquet"], help="File extensions to include (default: ['.parquet'])"
     )

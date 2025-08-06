@@ -24,6 +24,7 @@ class FilePartitioningStage(ProcessingStage[_EmptyTask, FileGroupTask]):
     file_paths: str | list[str]
     files_per_partition: int | None = None
     blocksize: int | str | None = None
+    num_output_partitions: int | None = None
     file_extensions: list[str] | None = None
     storage_options: dict[str, Any] | None = None
     limit: int | None = None
@@ -71,6 +72,9 @@ class FilePartitioningStage(ProcessingStage[_EmptyTask, FileGroupTask]):
             partitions = self._partition_by_count(files, self.files_per_partition)
         elif self.blocksize:
             partitions = self._partition_by_size(files, self.blocksize)
+        elif self.num_output_partitions:
+            fpp = int(len(files) / self.num_output_partitions)
+            partitions = self._partition_by_count(files, fpp)
         else:
             # All files in one group
             partitions = [files]
