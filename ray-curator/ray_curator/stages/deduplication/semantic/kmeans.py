@@ -9,6 +9,7 @@ from cuml.cluster.kmeans_mg import KMeansMG as cumlKMeans
 from ray_curator.backends.base import WorkerMetadata
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.deduplication.io_utils import DeduplicationIO
+from ray_curator.stages.resources import Resources
 from ray_curator.tasks import FileGroupTask
 
 
@@ -71,6 +72,9 @@ class KMeansStage(ProcessingStage[FileGroupTask, FileGroupTask], DeduplicationIO
         self.n_init = n_init
         self.oversampling_factor = oversampling_factor
         self.max_samples_per_batch = max_samples_per_batch
+
+        self._name = "KMeansStage"
+        self._resources = Resources(cpus=1.0, gpus=1.0)
 
     def process(self, task: FileGroupTask) -> FileGroupTask:
         df = self.read_parquet(task.data, columns=[self.id_col, self.embedding_col])

@@ -8,9 +8,8 @@ from loguru import logger
 
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 from ray_curator.pipeline import Pipeline
-from ray_curator.stages.deduplication.semantic.kmeans_stage_prtk import KMeansStage
+from ray_curator.stages.deduplication.semantic.kmeans import KMeansStage
 from ray_curator.stages.io.reader.file_partitioning import FilePartitioningStage
-from ray_curator.tasks import EmptyTask
 
 
 def main() -> int:
@@ -54,13 +53,20 @@ def main() -> int:
         }
     )
 
-    results = pipeline.run(executor)
+    try:
+        logger.info("Executing pipeline...")
+        results = pipeline.run(executor)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error during pipeline execution: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return 1
 
     logger.info(f"Pipeline completed successfully! Results: {len(results) if results else 0} tasks")
     if results:
         for i, result in enumerate(results):
             logger.info(f"  Result {i}: {result}")
-
 
     logger.info("KMeans clustering pipeline completed successfully!")
     return 0
@@ -79,17 +85,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-path", type=str, required=True, help="Path to output directory for clustered results"
     )
-    parser.add_argument("--id-col", type=str, required=True, help="Name of the ID column in the parquet files")
+    parser.add_argument("--id-col", type=str, default="id", help="Name of the ID column in the parquet files")
     parser.add_argument(
-        "--embedding-col", type=str, required=True, help="Name of the embedding column in the parquet files"
+        "--embedding-col", type=str, default="embedding", help="Name of the embedding column in the parquet files"
     )
-    parser.add_argument("--n-clusters", type=int, required=True, help="Number of clusters to create")
+    parser.add_argument("--n-clusters", type=int, default=10, help="Number of clusters to create")
 
     # Optional arguments
     parser.add_argument(
         "--files-per-partition",
         type=int,
-        default=None,
+        default=1,
         help="Number of files per partition (default: all files in one partition)",
     )
     parser.add_argument(

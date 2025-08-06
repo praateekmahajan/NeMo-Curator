@@ -67,7 +67,7 @@ class RayActorPoolExecutor(BaseExecutor):
 
                 if not current_tasks:
                     msg = f"{stage} - No tasks to process, can't continue"
-                    raise ValueError(msg) #noqa: TRY301
+                    raise ValueError(msg)  # noqa: TRY301
 
                 # Create actor pool for this stage
                 num_actors = self._calculate_optimal_actors(
@@ -86,7 +86,6 @@ class RayActorPoolExecutor(BaseExecutor):
                     actor_pool = self._create_raft_actor_pool(stage, num_actors, session_id)
                 else:
                     actor_pool = self._create_actor_pool(stage, num_actors)
-
 
                 # Process tasks through this stage using ActorPool
                 current_tasks = self._process_stage_with_pool(actor_pool, stage, current_tasks)
@@ -174,11 +173,7 @@ class RayActorPoolExecutor(BaseExecutor):
                 num_gpus=stage.resources.gpus,
                 name=f"{stage.name}-{actor_idx}",
             ).remote(
-                stage=stage,
-                index=actor_idx,
-                pool_size=num_actors,
-                session_id=session_id,
-                actor_name_prefix=stage.name
+                stage=stage, index=actor_idx, pool_size=num_actors, session_id=session_id, actor_name_prefix=stage.name
             )
             actors.append(actor)
 
@@ -218,7 +213,9 @@ class RayActorPoolExecutor(BaseExecutor):
 
         # Process each task and flatten the results since each task can produce multiple output tasks
         all_results = []
-        for result_batch in actor_pool.map_unordered(lambda actor, batch: actor.process_batch.remote(batch), task_batches):
+        for result_batch in actor_pool.map_unordered(
+            lambda actor, batch: actor.process_batch.remote(batch), task_batches
+        ):
             # result_batch is a list of tasks from processing a single input task
             all_results.extend(result_batch)
         return all_results
