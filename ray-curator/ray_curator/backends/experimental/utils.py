@@ -17,3 +17,13 @@ def get_worker_metadata_and_node_id() -> tuple[NodeInfo, WorkerMetadata]:
     """Get the worker metadata and node id from the runtime context."""
     ray_context = ray.get_runtime_context()
     return NodeInfo(node_id=ray_context.get_node_id()), WorkerMetadata(worker_id=ray_context.get_worker_id())
+
+
+def get_available_cpu_gpu_resources(init_and_shudown: bool = False) -> tuple[int, int]:
+    """Get available CPU and GPU resources from Ray."""
+    if init_and_shudown:
+        ray.init(ignore_reinit_error=True)
+    available_resources = ray.available_resources()
+    if init_and_shudown:
+        ray.shutdown()
+    return (available_resources.get("CPU", 0), available_resources.get("GPU", 0))

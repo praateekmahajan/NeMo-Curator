@@ -4,13 +4,11 @@
 import argparse
 import sys
 
-import ray
 from loguru import logger
 
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 from ray_curator.pipeline import Pipeline
 from ray_curator.stages.deduplication.semantic.kmeans import KMeansStage
-from ray_curator.stages.io.reader.file_partitioning import FilePartitioningStage
 
 
 def main() -> int:
@@ -22,13 +20,25 @@ def main() -> int:
     logger.info(f"Embedding column: {args.embedding_col}")
     logger.info(f"Number of clusters: {args.n_clusters}")
 
+
     # Create the pipeline
     pipeline = Pipeline(
-        name="kmeans_clustering_pipeline", description="Pipeline for K-means clustering on document embeddings"
+        name="kmeans_clustering_pipeline",
+        description="Pipeline for K-means clustering on document embeddings",
+        stages=[
+            KMeansStage(
+                id_col=args.id_col,
+                embedding_col=args.embedding_col,
+                output_path=args.output_path,
+                n_clusters=args.n_clusters,
+                input_path=args.input_path,
+                input_filetype=args.file_type,
+                input_storage_options={},
+                output_storage_options={},
+                input_file_limit=None,
+            )
+        ]
     )
-    # TODO: We need to figure out how to get number of num_output_partitions for FilePartitioningStage
-    # at runtime
-    ray.init()
 
     executor = RayActorPoolExecutor(
         config={
@@ -36,25 +46,6 @@ def main() -> int:
             "reserved_gpus": 0.0,
         }
     )
-
-    # Add FilePartitioningStage
-    file_partitioning_stage = FilePartitioningStage(
-        file_paths=args.input_path,
-        num_output_partitions=ray.available_resources()["GPU"] - executor.config["reserved_gpus"],
-        file_extensions=args.file_extensions,
-    )
-    pipeline.add_stage(file_partitioning_stage)
-
-    # Add KMeansStage
-    kmeans_stage = KMeansStage(
-        id_col=args.id_col,
-        embedding_col=args.embedding_col,
-        output_path=args.output_path,
-        n_clusters=args.n_clusters,
-    )
-    pipeline.add_stage(kmeans_stage)
-
-    logger.info(f"Pipeline created with {len(pipeline.stages)} stages")
 
     # Create executor - KMeansStage requires RAFT, so we use RayActorPoolExecutor
     try:
@@ -77,6 +68,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    logger.info("Starting KMeans clustering pipeline...")
     parser = argparse.ArgumentParser(description="Run a pipeline with FilePartitioningStage and KMeansStage")
 
     # Required arguments
@@ -91,12 +83,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--id-col", type=str, default="id", help="Name of the ID column in the parquet files")
     parser.add_argument(
-        "--embedding-col", type=str, default="embedding", help="Name of the embedding column in the parquet files"
+        "--embedding-col", type=str, default="embeddings", help="Name of the embedding column in the parquet files"
     )
     parser.add_argument("--n-clusters", type=int, default=10, help="Number of clusters to create")
 
     parser.add_argument(
-        "--file-extensions", nargs="+", default=[".parquet"], help="File extensions to include (default: ['.parquet'])"
+        "--file-type", type=str, default="parquet", help="File type to include (default: 'parquet')"
     )
 
     args = parser.parse_args()
