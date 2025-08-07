@@ -1,6 +1,5 @@
 """File partitioning stage for deduplication workflows."""
 
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -11,52 +10,13 @@ from ray_curator.backends.base import WorkerMetadata
 from ray_curator.backends.experimental.utils import RayStageSpecKeys, get_available_cpu_gpu_resources
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.resources import Resources
-from ray_curator.tasks import Task, _EmptyTask
+from ray_curator.tasks import _EmptyTask
 from ray_curator.utils.file_utils import get_all_files_paths_under
 
-
-@dataclass
-class KMeansFileGroupTask(Task[list[list[str]]]):
-    """Task representing groups of files for KMeans clustering.
-
-    This task contains multiple groups of files, where each group is a list of file paths.
-    The data structure is list[list[str]] where:
-    - Outer list: Contains multiple file groups
-    - Inner list: Contains file paths within each group
-
-    This is typically used in deduplication pipelines where files need to be
-    partitioned into groups for parallel processing.
-    """
-
-    data: list[list[str]] = field(default_factory=list)
-    filetype: Literal["jsonl", "parquet"] = field(default="parquet")
-
-    @property
-    def num_items(self) -> int:
-        """Number of file groups in this task."""
-        return len(self.data)
-
-    @property
-    def total_files(self) -> int:
-        """Total number of files across all groups."""
-        return sum(len(group) for group in self.data)
-
-    def validate(self) -> bool:
-        """Validate the task data."""
-        if len(self.data) == 0:
-            logger.warning(f"No file groups to process in task {self.task_id}")
-            return False
-
-        # Check that all groups contain at least one file
-        for i, group in enumerate(self.data):
-            if len(group) == 0:
-                logger.warning(f"Empty file group {i} in task {self.task_id}")
-                return False
-
-        return True
+from .file_task import BatchedFileGroupTask
 
 
-class KMeansFilePartitioningStage(ProcessingStage[_EmptyTask, KMeansFileGroupTask]):
+class KMeansFilePartitioningStage(ProcessingStage[_EmptyTask, BatchedFileGroupTask]):
     """Stage that partitions input files into KMeansFileGroupTasks for deduplication.
 
     This stage takes an EmptyTask as input and outputs num_output_partitions KMeansFileGroupTasks.
@@ -116,7 +76,7 @@ class KMeansFilePartitioningStage(ProcessingStage[_EmptyTask, KMeansFileGroupTas
             RayStageSpecKeys.IS_FANOUT_STAGE: True,
         }
 
-    def process(self, _: _EmptyTask) -> list[KMeansFileGroupTask]:
+    def process(self, _: _EmptyTask) -> list[BatchedFileGroupTask]:
         """Process the EmptyTask to create KMeansFileGroupTasks.
 
         Args:
@@ -158,7 +118,7 @@ class KMeansFilePartitioningStage(ProcessingStage[_EmptyTask, KMeansFileGroupTas
                 logger.info(f"Reached limit of {self.limit} partitions")
                 break
 
-            kmeans_task = KMeansFileGroupTask(
+            kmeans_task = BatchedFileGroupTask(
                 task_id=f"kmeans_partition_{i}",
                 dataset_name=dataset_name,
                 data=file_groups,

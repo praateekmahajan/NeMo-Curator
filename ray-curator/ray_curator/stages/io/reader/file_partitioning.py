@@ -10,7 +10,7 @@ from ray_curator.backends.experimental.utils import RayStageSpecKeys
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.resources import Resources
 from ray_curator.tasks import FileGroupTask, _EmptyTask
-from ray_curator.utils.file_utils import get_all_files_paths_under
+from ray_curator.utils.file_utils import get_all_files_paths_under, infer_dataset_name_from_path
 
 
 @dataclass
@@ -81,7 +81,7 @@ class FilePartitioningStage(ProcessingStage[_EmptyTask, FileGroupTask]):
 
         # Create FileGroupTask for each partition
         tasks = []
-        dataset_name = self._get_dataset_name(files)
+        dataset_name = infer_dataset_name_from_path(files[0]) if files else "dataset"
 
         for i, file_group in enumerate(partitions):
             if self.limit is not None and len(tasks) >= self.limit:
@@ -124,17 +124,7 @@ class FilePartitioningStage(ProcessingStage[_EmptyTask, FileGroupTask]):
             # List of files
             return self.file_paths
 
-    def _get_dataset_name(self, files: list[str]) -> str:
-        """Extract dataset name from file paths."""
-        if files:
-            # Use the parent directory name or first file stem
-            # TODO: This needs to change for fsspec
-            first_file = Path(files[0])
-            if first_file.parent.name and first_file.parent.name != ".":
-                return first_file.parent.name
-            else:
-                return first_file.stem
-        return "dataset"
+
 
     def _partition_by_count(self, files: list[str], count: int) -> list[list[str]]:
         """Partition files by count."""

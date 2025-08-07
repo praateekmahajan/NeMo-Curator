@@ -3,12 +3,13 @@
 
 import argparse
 import sys
+from pathlib import Path
 
 from loguru import logger
 
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 from ray_curator.pipeline import Pipeline
-from ray_curator.stages.deduplication.semantic.kmeans import KMeansStage
+from ray_curator.stages.deduplication.semantic import KMeansStage, PairwiseStage
 
 
 def main() -> int:
@@ -20,18 +21,21 @@ def main() -> int:
     logger.info(f"Embedding column: {args.embedding_col}")
     logger.info(f"Number of clusters: {args.n_clusters}")
 
+    kmeans_input_path = args.input_path
+    kmeans_output_path = str(Path(args.output_path) / "kmeans")
+    pairwise_input_path = str(Path(args.output_path) / "pairwise")
 
-    # Create the pipeline
-    pipeline = Pipeline(
+    # KMeans pipeline
+    kmeans_pipeline = Pipeline(
         name="kmeans_clustering_pipeline",
         description="Pipeline for K-means clustering on document embeddings",
         stages=[
             KMeansStage(
+                input_path=kmeans_input_path,
                 id_col=args.id_col,
                 embedding_col=args.embedding_col,
-                output_path=args.output_path,
+                output_path=kmeans_output_path,
                 n_clusters=args.n_clusters,
-                input_path=args.input_path,
                 input_filetype=args.file_type,
                 input_storage_options={},
                 output_storage_options={},
@@ -39,31 +43,39 @@ def main() -> int:
             )
         ]
     )
-
-    executor = RayActorPoolExecutor(
+    kmeans_executor = RayActorPoolExecutor(
         config={
             "reserved_cpus": 1.0,  # Reserve some CPUs for system overhead
             "reserved_gpus": 0.0,
         }
     )
+    kmeans_results = kmeans_pipeline.run(kmeans_executor)
+    for task_out in kmeans_results:
+        logger.info(task_out)
 
-    # Create executor - KMeansStage requires RAFT, so we use RayActorPoolExecutor
-    try:
-        logger.info("Executing pipeline...")
-        results = pipeline.run(executor)
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"Error during pipeline execution: {e}")
-        import traceback
+    # Pairwise pipeline
+    pairwise_pipeline = Pipeline(
+        name="pairwise_clustering_pipeline",
+        description="Pipeline for pairwise clustering on document embeddings",
+        stages=[
+            PairwiseStage(
+                id_col=args.id_col,
+                embedding_col=args.embedding_col,
+                input_path=kmeans_output_path,
+                output_path=pairwise_input_path,
+            )
+        ]
+    )
+    pairwise_executor = RayActorPoolExecutor(
+        config={
+            "reserved_cpus": 1.0,  # Reserve some CPUs for system overhead
+            "reserved_gpus": 0.0,
+        }
+    )
+    pairwise_results = pairwise_pipeline.run(pairwise_executor)
+    for task_out in pairwise_results:
+        logger.info(task_out)
 
-        traceback.print_exc()
-        return 1
-
-    logger.info(f"Pipeline completed successfully! Results: {len(results) if results else 0} tasks")
-    if results:
-        for i, result in enumerate(results):
-            logger.info(f"  Result {i}: {result}")
-
-    logger.info("KMeans clustering pipeline completed successfully!")
     return 0
 
 
@@ -90,6 +102,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--file-type", type=str, default="parquet", help="File type to include (default: 'parquet')"
     )
+    parser.add_argument("--executor", type=str, default="ray", help="Executor to use (default: 'ray_data') or 'xenna'")
 
     args = parser.parse_args()
 

@@ -10,7 +10,8 @@ from ray_curator.stages.deduplication.io_utils import DeduplicationIO
 from ray_curator.stages.resources import Resources
 from ray_curator.tasks import FileGroupTask, _EmptyTask
 
-from .kmeans_io import KMeansFileGroupTask, KMeansFilePartitioningStage
+from .kmeans_io import BatchedFileGroupTask, KMeansFilePartitioningStage
+from .utils import get_array_from_df
 
 if TYPE_CHECKING:
     import cudf
@@ -22,14 +23,7 @@ L2_DIST_TO_CENT_COL = "l2_dist_to_cent"
 COSINE_DIST_TO_CENT_COL = "cosine_dist_to_cent"
 
 
-def get_array_from_df(df: "cudf.DataFrame", embedding_col: str) -> "cp.ndarray":
-    """
-    Convert a column of lists to a 2D array.
-    """
-    return df[embedding_col].list.leaves.values.reshape(len(df), -1)
-
-
-class KMeansReadFitWriteStage(ProcessingStage[KMeansFileGroupTask, _EmptyTask], DeduplicationIO):
+class KMeansReadFitWriteStage(ProcessingStage[BatchedFileGroupTask, _EmptyTask], DeduplicationIO):
     """KMeans clustering stage that requires RAFT for distributed processing."""
 
     def __init__(
@@ -137,7 +131,7 @@ class KMeansReadFitWriteStage(ProcessingStage[KMeansFileGroupTask, _EmptyTask], 
             self.write_parquet(
                 dfs[i],
                 self.output_path,
-                partition_file_name=f"{task.task_id}_{i}",
+                partition_file_name=f"{task.task_id}_{i}.parquet",
                 partition_cols=["centroid"],
                 index=False,
                 storage_options=self.output_storage_options,
@@ -148,7 +142,7 @@ class KMeansReadFitWriteStage(ProcessingStage[KMeansFileGroupTask, _EmptyTask], 
             dataset_name=task.dataset_name,
             _metadata=task._metadata,
             _stage_perf=task._stage_perf,
-            data=None
+            data=None,
         )
 
     def setup(self, _: WorkerMetadata | None = None) -> None:
