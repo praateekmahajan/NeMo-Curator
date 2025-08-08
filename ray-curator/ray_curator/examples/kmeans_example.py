@@ -29,7 +29,6 @@ def main() -> int:
     logger.info(f"Number of clusters: {args.n_clusters}")
     logger.info(f"Cosine similarity threshold: {args.cosine_sim_threshold}")
 
-    kmeans_input_path = args.input_path
     embedding_output_path = str(Path(args.output_path) / "embeddings")
     kmeans_output_path = str(Path(args.output_path) / "kmeans")
     pairwise_input_path = str(Path(args.output_path) / "pairwise")
@@ -140,6 +139,7 @@ def main() -> int:
     for task_out in pairwise_results:
         logger.info(task_out)
 
+    logger.success(f"Time taken: {[(k, f'{v:.2f}s') for k, v in time_taken_dict.items()]}")
     logger.success(f"Time taken: {[(k, f'{v:.2f}s') for k, v in time_taken_dict.items()]}")
     for path in [
         args.input_path,
