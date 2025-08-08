@@ -103,7 +103,6 @@ class KMeansFilePartitioningStage(ProcessingStage[_EmptyTask, BatchedFileGroupTa
             self.num_output_partitions = len(files)
 
         partitioned_groups = [partition.tolist() for partition in np.array_split(files, self.num_output_partitions)]
-        logger.info(f"Partitioned groups: {partitioned_groups}")
         if self.filetype == "parquet":
             partitioned_groups = self._break_parquet_partitions_into_groups(
                 self.embedding_dim, partitioned_groups, self.storage_options
@@ -130,7 +129,7 @@ class KMeansFilePartitioningStage(ProcessingStage[_EmptyTask, BatchedFileGroupTa
 
     def _get_file_list(self) -> list[str]:
         """Get the list of files to process."""
-        logger.info(f"Getting file list for {self.file_paths}")
+        logger.debug(f"Getting file list for {self.file_paths}")
         if isinstance(self.file_paths, str):
             # TODO: This needs to change for fsspec
             path = Path(self.file_paths)
@@ -148,7 +147,6 @@ class KMeansFilePartitioningStage(ProcessingStage[_EmptyTask, BatchedFileGroupTa
             # List of files
             out = self.file_paths
 
-        logger.info(f"Found {len(out)} files i.e. {out}")
         return out
 
     def _get_dataset_name(self, files: list[str]) -> str:

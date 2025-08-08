@@ -5,11 +5,12 @@ import argparse
 import sys
 from pathlib import Path
 
+import pandas as pd
 from loguru import logger
 
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 from ray_curator.pipeline import Pipeline
-from ray_curator.stages.deduplication.semantic import KMeansStage, PairwiseStage
+from ray_curator.stages.deduplication.semantic import IdentifySemanticDuplicatesStage, KMeansStage, PairwiseStage
 
 
 def main() -> int:
@@ -20,10 +21,12 @@ def main() -> int:
     logger.info(f"ID column: {args.id_col}")
     logger.info(f"Embedding column: {args.embedding_col}")
     logger.info(f"Number of clusters: {args.n_clusters}")
+    logger.info(f"Cosine similarity threshold: {args.cosine_sim_threshold}")
 
     kmeans_input_path = args.input_path
     kmeans_output_path = str(Path(args.output_path) / "kmeans")
     pairwise_input_path = str(Path(args.output_path) / "pairwise")
+    duplicates_output_path = str(Path(args.output_path) / "duplicates")
 
     # KMeans pipeline
     kmeans_pipeline = Pipeline(
@@ -41,7 +44,7 @@ def main() -> int:
                 output_storage_options={},
                 input_file_limit=None,
             )
-        ]
+        ],
     )
     kmeans_executor = RayActorPoolExecutor(
         config={
@@ -64,17 +67,39 @@ def main() -> int:
                 input_path=kmeans_output_path,
                 output_path=pairwise_input_path,
             )
-        ]
+        ],
     )
-    pairwise_executor = RayActorPoolExecutor(
-        config={
-            "reserved_cpus": 1.0,  # Reserve some CPUs for system overhead
-            "reserved_gpus": 0.0,
-        }
-    )
+
+    if args.cosine_sim_threshold is not None:
+        from ray_curator.stages.resources import Resources
+        duplicate_identify_stage =             IdentifySemanticDuplicatesStage(
+                threshold=args.cosine_sim_threshold,
+                output_path=duplicates_output_path,
+                verbose=True,
+            )
+
+        if args.use_gpu_for_duplicates:
+            duplicate_identify_stage.with_(resources=Resources(cpus=1.0, gpus=1.0))
+        else:
+            duplicate_identify_stage.with_(resources=Resources(cpus=1.0, gpus=0.0))
+        pairwise_pipeline.add_stage(duplicate_identify_stage)
+
+    if args.executor == "xenna":
+        from ray_curator.backends.xenna import XennaExecutor
+
+        pairwise_executor = XennaExecutor()
+    else:
+        from ray_curator.backends.experimental.ray_data import RayDataExecutor
+
+        pairwise_executor = RayDataExecutor()
+
     pairwise_results = pairwise_pipeline.run(pairwise_executor)
     for task_out in pairwise_results:
         logger.info(task_out)
+
+    for path in [kmeans_input_path, pairwise_input_path, duplicates_output_path]:
+        df = pd.read_parquet(path)
+        logger.info(f"{path=} {df.columns} {len(df)}")
 
     return 0
 
@@ -99,10 +124,21 @@ if __name__ == "__main__":
     )
     parser.add_argument("--n-clusters", type=int, default=10, help="Number of clusters to create")
 
-    parser.add_argument(
-        "--file-type", type=str, default="parquet", help="File type to include (default: 'parquet')"
-    )
+    parser.add_argument("--file-type", type=str, default="parquet", help="File type to include (default: 'parquet')")
     parser.add_argument("--executor", type=str, default="ray", help="Executor to use (default: 'ray_data') or 'xenna'")
+
+    # New argument for identify duplicates stage
+    parser.add_argument(
+        "--cosine-sim-threshold",
+        type=float,
+        default=0.90,
+        help="Cosine similarity threshold for identifying duplicates (e.g., 0.8). If not provided, identify duplicates stage is skipped.",
+    )
+    parser.add_argument(
+        "--use-gpu-for-duplicates",
+        action="store_true",
+        help="Use GPU for duplicates stage (default: False)",
+    )
 
     args = parser.parse_args()
 

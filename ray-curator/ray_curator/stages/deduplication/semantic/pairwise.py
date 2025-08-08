@@ -1,3 +1,4 @@
+import os
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -6,11 +7,11 @@ import numpy as np
 from loguru import logger
 
 from ray_curator.stages.base import CompositeStage, ProcessingStage
+from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
 from ray_curator.stages.deduplication.io_utils import DeduplicationIO
 from ray_curator.stages.resources import Resources
-from ray_curator.tasks import _EmptyTask
+from ray_curator.tasks import FileGroupTask, _EmptyTask
 
-from ..id_generator import CURATOR_DEDUP_ID_STR
 from .file_task import BatchedFileGroupTask
 from .pairwise_io import PairwiseFilePartitioningStage
 from .utils import get_array_from_df
@@ -58,7 +59,7 @@ def pairwise_cosine_similarity_batched(
 
 
 
-class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, _EmptyTask], DeduplicationIO):
+class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGroupTask], DeduplicationIO):
     """Pairwise cosine similarity stage that computes similarity within clusters."""
 
     def __init__(
@@ -92,7 +93,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, _Empty
         self._name = "PairwiseCosineSimilarityStage"
         self._resources = Resources(cpus=1.0, gpus=1.0)
 
-    def process(self, task: BatchedFileGroupTask) -> _EmptyTask:
+    def process(self, task: BatchedFileGroupTask) -> FileGroupTask:
         """Process a PairwiseFileGroupTask to compute pairwise similarities."""
         if task.filetype != "parquet":
             msg = f"PairwiseCosineSimilarityStage only supports parquet files, got {task.filetype}"
@@ -102,6 +103,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, _Empty
         import torch
 
         cluster_id = task._metadata.get("centroid_id")
+        output_path = os.path.join(self.output_path, f"cluster_{cluster_id}.parquet")
         if cluster_id is None:
             msg = "centroid_id not found in task metadata"
             raise ValueError(msg)
@@ -124,12 +126,12 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, _Empty
 
         if not dfs:
             logger.warning(f"No data found for cluster {cluster_id}")
-            return _EmptyTask(
+            return FileGroupTask(
                 task_id=task.task_id,
                 dataset_name=task.dataset_name,
                 _metadata=task._metadata,
                 _stage_perf=task._stage_perf,
-                data=None
+                data=[]
             )
 
         has_curator_id = CURATOR_DEDUP_ID_STR in dfs[0].columns
@@ -149,17 +151,19 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, _Empty
             })
             self.write_parquet(
                 result_df,
-                self.output_path,
-                partition_file_name=f"cluster_{cluster_id}",
+                output_path,
                 storage_options=self.output_storage_options,
                 index=False
             )
-            return _EmptyTask(
+            return FileGroupTask(
                 task_id=task.task_id,
                 dataset_name=task.dataset_name,
-                _metadata=task._metadata,
+                _metadata={
+                    **task._metadata,
+                    "centroid_id": cluster_id,
+                },
                 _stage_perf=task._stage_perf,
-                data=None
+                data=[os.path.join(self.output_path, f"cluster_{cluster_id}.parquet")]
             )
 
         # Extract embeddings and compute similarities
@@ -169,7 +173,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, _Empty
 
         # Compute pairwise similarities
         max_similarity, max_indices = pairwise_cosine_similarity_batched(
-            cluster_embeddings, "cuda", self.batch_size
+            cluster_embeddings, "cuda", self.pairwise_batch_size
         )
 
         # Convert indices back to IDs
@@ -187,32 +191,31 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, _Empty
 
         t3 = time.perf_counter()
         if self.verbose:
-            logger.info(f"Pairwise computation for cluster {cluster_id} done in {(t3 - t2):.2f} seconds")
+            logger.debug(f"Pairwise computation for cluster {cluster_id} done in {(t3 - t2):.2f} seconds")
 
         # Write results
         self.write_parquet(
             points_to_remove_df,
-            self.output_path,
-            partition_file_name=f"cluster_{cluster_id}",
+            output_path,
             storage_options=self.output_storage_options,
             index=False
         )
 
         t4 = time.perf_counter()
         if self.verbose:
-            logger.info(f"Write for cluster {cluster_id} done in {(t4 - t3):.2f} seconds")
+            logger.debug(f"Write for cluster {cluster_id} done in {(t4 - t3):.2f} seconds")
 
-        return _EmptyTask(
+        return FileGroupTask(
             task_id=task.task_id,
             dataset_name=task.dataset_name,
-            _metadata=task._metadata,
+            _metadata={**task._metadata, "centroid_id": cluster_id},
             _stage_perf=task._stage_perf,
-            data=None
+            data=[output_path]
         )
 
 
 @dataclass
-class PairwiseStage(CompositeStage[_EmptyTask, _EmptyTask]):
+class PairwiseStage(CompositeStage[_EmptyTask, FileGroupTask]):
     """Pairwise similarity stage for semantic deduplication."""
 
     # Required parameters
