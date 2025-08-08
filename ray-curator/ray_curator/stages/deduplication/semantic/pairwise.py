@@ -64,8 +64,8 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
 
     def __init__(
         self,
-        id_col: str,
-        embedding_col: str,
+        id_field: str,
+        embedding_field: str,
         output_path: str,
         pairwise_batch_size: int = 1024,
         verbose: bool = False,
@@ -83,8 +83,8 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
             input_storage_options: Storage options for reading input files.
             output_storage_options: Storage options for writing output files.
         """
-        self.id_col = id_col
-        self.embedding_col = embedding_col
+        self.id_field = id_field
+        self.embedding_field = embedding_field
         self.output_path = output_path
         self.pairwise_batch_size = pairwise_batch_size
         self.verbose = verbose
@@ -117,7 +117,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
         for file_group in task.data:
             df = self.read_parquet(
                 file_group,
-                columns=[self.id_col, self.embedding_col],
+                columns=[self.id_field, self.embedding_field],
                 storage_options=self.input_storage_options
             )
             dfs.append(df)
@@ -145,8 +145,8 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
         # Handle single item clusters
         if num_rows == 1:
             result_df = cudf.DataFrame({
-                "id": dfs[0][self.id_col],
-                "max_id": dfs[0][self.id_col],
+                "id": dfs[0][self.id_field],
+                "max_id": dfs[0][self.id_field],
                 "cosine_sim_score": cudf.Series([0], dtype="float32")
             })
             self.write_parquet(
@@ -168,8 +168,8 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
 
         # Extract embeddings and compute similarities
         # Concatenate embeddings in cupy to avoid the 2bn limit in cudf
-        cluster_embeddings = torch.cat([torch.as_tensor(get_array_from_df(df, self.embedding_col), device="cuda") for df in dfs])
-        ids = cudf.concat([df[self.id_col] for df in dfs])
+        cluster_embeddings = torch.cat([torch.as_tensor(get_array_from_df(df, self.embedding_field), device="cuda") for df in dfs])
+        ids = cudf.concat([df[self.id_field] for df in dfs])
 
         # Compute pairwise similarities
         max_similarity, max_indices = pairwise_cosine_similarity_batched(
@@ -219,8 +219,8 @@ class PairwiseStage(CompositeStage[_EmptyTask, FileGroupTask]):
     """Pairwise similarity stage for semantic deduplication."""
 
     # Required parameters
-    id_col: str
-    embedding_col: str
+    id_field: str
+    embedding_field: str
     input_path: str  # Path to kmeans output
     output_path: str
 
@@ -244,8 +244,8 @@ class PairwiseStage(CompositeStage[_EmptyTask, FileGroupTask]):
                 storage_options=self.input_storage_options,
             ),
             PairwiseCosineSimilarityStage(
-                id_col=self.id_col,
-                embedding_col=self.embedding_col,
+                id_field=self.id_field,
+                embedding_field=self.embedding_field,
                 output_path=self.output_path,
                 pairwise_batch_size=self.pairwise_batch_size,
                 verbose=self.verbose,

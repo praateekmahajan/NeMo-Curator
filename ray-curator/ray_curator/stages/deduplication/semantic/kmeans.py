@@ -28,8 +28,8 @@ class KMeansReadFitWriteStage(ProcessingStage[BatchedFileGroupTask, _EmptyTask],
 
     def __init__(
         self,
-        id_col: str,
-        embedding_col: str,
+        id_field: str,
+        embedding_field: str,
         output_path: str,
         n_clusters: int,
         distance_metric_to_use: Literal["l2", "cosine"] | None = "cosine",
@@ -47,8 +47,8 @@ class KMeansReadFitWriteStage(ProcessingStage[BatchedFileGroupTask, _EmptyTask],
         """KMeans clustering stage that requires RAFT for distributed processing.
 
         Args:
-            id_col (str): The column name of the id column.
-            embedding_col (str): The column name of the embedding column.
+            id_field (str): The column name of the id column.
+            embedding_field (str): The column name of the embedding column.
             output_path (str): The path to the output directory.
             n_clusters (int): The number of clusters to create.
                 # id_generator (IdGenerator): The id generator to use.
@@ -63,8 +63,8 @@ class KMeansReadFitWriteStage(ProcessingStage[BatchedFileGroupTask, _EmptyTask],
             oversampling_factor (float): The amount of points to sample in scalable k-means++ initialization for potential centroids. Increasing this value can lead to better initial centroids at the cost of memory. The total number of centroids sampled in scalable k-means++ is oversampling_factor * n_clusters * 8.
             max_samples_per_batch (int): The number of data samples to use for batches of the pairwise distance computation. This computation is done throughout both fit predict. The default should suit most cases. The total number of elements in the batched pairwise distance computation is max_samples_per_batch * n_clusters. It might become necessary to lower this number when n_clusters becomes prohibitively large.
         """
-        self.id_col = id_col
-        self.embedding_col = embedding_col
+        self.id_field = id_field
+        self.embedding_field = embedding_field
         self.output_path = output_path
         self.n_clusters = n_clusters
         if distance_metric_to_use == "l2":
@@ -101,23 +101,23 @@ class KMeansReadFitWriteStage(ProcessingStage[BatchedFileGroupTask, _EmptyTask],
         for file_paths in task.data:
             if task.filetype == "parquet":
                 df = self.read_parquet(
-                    file_paths, columns=[self.id_col, self.embedding_col], storage_options=self.input_storage_options
+                    file_paths, columns=[self.id_field, self.embedding_field], storage_options=self.input_storage_options
                 )
             elif task.filetype == "jsonl":
                 df = self.read_jsonl(
-                    file_paths, columns=[self.id_col, self.embedding_col], storage_options=self.input_storage_options
+                    file_paths, columns=[self.id_field, self.embedding_field], storage_options=self.input_storage_options
                 )
             else:
                 msg = f"Unsupported data type: {task.filetype}"
                 raise ValueError(msg)
 
             # normalize the embeddings
-            df = self.normalize_embeddings_col_in_df(df, self.embedding_col)
+            df = self.normalize_embeddings_col_in_df(df, self.embedding_field)
             dfs.append(df)
             num_rows += len(df)
 
         # Concatenate all embeddings in cupy to avoid the 2bn limit in cudf
-        cupy_arr = cp.concatenate([get_array_from_df(df, self.embedding_col) for df in dfs], axis=0)
+        cupy_arr = cp.concatenate([get_array_from_df(df, self.embedding_field) for df in dfs], axis=0)
         current_row_idx = 0
         centroids = self.kmeans.fit_predict(cupy_arr).astype(cp.int32)
         for df in dfs:
@@ -127,7 +127,7 @@ class KMeansReadFitWriteStage(ProcessingStage[BatchedFileGroupTask, _EmptyTask],
 
         # Assign distance and write to parquet
         for i in range(len(dfs)):
-            dfs[i] = self._assign_distances(dfs[i], self.embedding_col, self.kmeans.cluster_centers_)
+            dfs[i] = self._assign_distances(dfs[i], self.embedding_field, self.kmeans.cluster_centers_)
             self.write_parquet(
                 dfs[i],
                 self.output_path,
@@ -214,8 +214,8 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
     """KMeans clustering stage that requires RAFT for distributed processing."""
 
     n_clusters: int
-    id_col: str
-    embedding_col: str
+    id_field: str
+    embedding_field: str
     output_path: str
     # Read args
     input_path: str | list[str]
@@ -240,8 +240,8 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
     """KMeans clustering stage that requires RAFT for distributed processing.
 
     Args:
-        id_col (str): The column name of the id column.
-        embedding_col (str): The column name of the embedding column.
+        id_field (str): The column name of the id column.
+        embedding_field (str): The column name of the embedding column.
         output_path (str): The path to the output directory.
         n_clusters (int): The number of clusters to create.
             # id_generator (IdGenerator): The id generator to use.
@@ -273,8 +273,8 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
                 limit=self.input_file_limit,
             ),
             KMeansReadFitWriteStage(
-                id_col=self.id_col,
-                embedding_col=self.embedding_col,
+                id_field=self.id_field,
+                embedding_field=self.embedding_field,
                 output_path=self.output_path,
                 n_clusters=self.n_clusters,
                 distance_metric_to_use=self.distance_metric_to_use,
