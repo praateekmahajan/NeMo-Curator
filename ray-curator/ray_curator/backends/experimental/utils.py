@@ -1,8 +1,12 @@
+import time
 from enum import Enum
 
 import ray
+from loguru import logger
 
 from ray_curator.backends.base import NodeInfo, WorkerMetadata
+from ray_curator.backends.experimental.utils import get_available_cpu_gpu_resources
+from ray_curator.stages.base import ProcessingStage
 
 
 class RayStageSpecKeys(str, Enum):
@@ -23,7 +27,36 @@ def get_available_cpu_gpu_resources(init_and_shudown: bool = False) -> tuple[int
     """Get available CPU and GPU resources from Ray."""
     if init_and_shudown:
         ray.init(ignore_reinit_error=True)
+    time.sleep(0.2) # ray.available_resources() returns might have a lag
     available_resources = ray.available_resources()
     if init_and_shudown:
         ray.shutdown()
     return (available_resources.get("CPU", 0), available_resources.get("GPU", 0))
+
+
+@ray.remote
+def _setup_stage_on_node(stage: ProcessingStage, node_info: NodeInfo, worker_metadata: WorkerMetadata) -> None:
+    """Ray remote function to execute setup_on_node for a stage."""
+    stage.setup_on_node(node_info, worker_metadata)
+
+
+def execute_setup_on_node(stages: list[ProcessingStage]) -> None:
+    """Execute setup on node for a stage."""
+    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+    ray_tasks = []
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        node_info = NodeInfo(node_id=node_id)
+        worker_metadata = WorkerMetadata(worker_id="", allocation=None)
+        logger.info(f"Executing setup on node {node_id} for {len(stages)} stages")
+        for stage in stages:
+            # Create NodeInfo and WorkerMetadata for this node
+
+            ray_tasks.append(
+                _setup_stage_on_node.options(
+                    num_cpus=1,
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(node_id=node_id, soft=False),
+                ).remote(stage, node_info, worker_metadata)
+            )
+    ray.get(ray_tasks)

@@ -142,20 +142,4 @@ class RayActorPoolRAFTAdapter(BaseStageAdapter):
             raise
 
     def teardown(self) -> None:
-        """Teardown the stage and RAFT resources."""
-        try:
-            # Call parent teardown first
-            super().teardown()
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"Error during stage teardown: {e}")
-
-        try:
-            # Cleanup RAFT resources if needed
-            if hasattr(self, "_raft_handle"):
-                # TODO: Add any RAFT-specific cleanup here
-                pass
-            if hasattr(self, "_nccl"):
-                # TODO: Add NCCL cleanup if needed
-                pass
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"Error during RAFT cleanup: {e}")
+        super().teardown()

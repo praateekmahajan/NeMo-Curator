@@ -59,7 +59,7 @@ class Comms:
         self.verbose = verbose
 
         if verbose:
-            logger.info("Initializing comms!")
+            logger.debug("Initializing comms!")
 
     def __del__(self) -> None:
         if self.nccl_initialized:
@@ -77,4 +77,4 @@ class Comms:
         self.nccl_initialized = True
 
         if self.verbose:
-            logger.info("Initialization complete.")
+            logger.debug("Initialization complete.")
