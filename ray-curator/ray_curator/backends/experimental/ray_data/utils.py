@@ -1,5 +1,3 @@
-
-
 from ray_curator.backends.experimental.utils import get_available_cpu_gpu_resources
 from ray_curator.stages.base import ProcessingStage
 
@@ -42,4 +40,3 @@ def is_actor_stage(stage: ProcessingStage) -> bool:
     overridden_setup = type(stage).setup is not ProcessingStage.setup
     has_gpu_and_cpu = (stage.resources.gpus > 0) and (stage.resources.cpus > 0)
     return overridden_setup or has_gpu_and_cpu
-

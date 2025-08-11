@@ -82,5 +82,3 @@ class TestExecuteSetupOnNode:
         assert len(matching_logs) == len(ray.nodes()), (
             f"Expected {len(ray.nodes())} logs for setup on node for 2 stages, got {len(matching_logs)}: {matching_logs}"
         )
-
-
