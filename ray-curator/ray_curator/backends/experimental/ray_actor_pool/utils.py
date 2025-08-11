@@ -1,11 +1,17 @@
 from typing import TYPE_CHECKING
 
+import ray
 from loguru import logger
 
 from ray_curator.backends.experimental.utils import get_available_cpu_gpu_resources
 
 if TYPE_CHECKING:
+    from ray.actor import ActorClass
+
     from ray_curator.stages.base import ProcessingStage
+
+    from .adapter import RayActorPoolStageAdapter
+    from .raft_adapter import RayActorPoolRAFTAdapter
 
 _LARGE_INT = 2**31 - 1
 
@@ -35,6 +41,10 @@ def calculate_optimal_actors_for_stage(
     # Ensure we don't create more actors than configured maximum
     max_actors_resources = min(max_actors_resources, stage.num_workers() or _LARGE_INT)
 
+    if max_actors_resources == 0:
+        msg = f"No resources available for stage {stage.name}."
+        raise ValueError(msg)
+
     # Don't create more actors than tasks
     optimal_actors = min(num_tasks, max_actors_resources)
 
@@ -46,3 +56,36 @@ def calculate_optimal_actors_for_stage(
     logger.info(f"    Stage requirements: {stage.resources.cpus} CPUs, {stage.resources.gpus} GPUs")
 
     return optimal_actors
+
+
+def create_named_ray_actor_pool_stage_adapter(
+    stage: "ProcessingStage",
+    cls: type["RayActorPoolStageAdapter"] | type["RayActorPoolRAFTAdapter"],
+) -> "ActorClass[RayActorPoolStageAdapter | RayActorPoolRAFTAdapter]":
+    """Create a named RayActorPoolStageAdapter or RayActorPoolRAFTAdapter.
+
+    This function creates a dynamic subclass of the given adapter class,
+    named after the stage's class name. This ensures that when Ray calls
+    type(adapter).__name__, it returns the original stage's class name rather
+    than 'RayActorPoolStageAdapter' or 'RayActorPoolRAFTAdapter'.
+
+    Args:
+        stage (ProcessingStage): ProcessingStage to adapt
+
+    Returns:
+        ActorClass: A ray.remote decorated class that can be used to create actors
+    """
+    # Get the original stage's class name
+    original_class_name = type(stage).__name__
+
+    # Create a dynamic subclass with the original name
+    DynamicAdapter = type(  # noqa: N806
+        original_class_name,  # Use the original stage's name
+        (cls,),  # Inherit from the adapter class
+        {
+            "__module__": cls.__module__,  # Keep the same module
+        },
+    )
+
+    # Return the ray.remote decorated class
+    return ray.remote(DynamicAdapter)

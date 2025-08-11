@@ -12,7 +12,7 @@ from ray_curator.tasks import EmptyTask, Task
 
 from .adapter import RayActorPoolStageAdapter
 from .raft_adapter import RayActorPoolRAFTAdapter
-from .utils import calculate_optimal_actors_for_stage
+from .utils import calculate_optimal_actors_for_stage, create_named_ray_actor_pool_stage_adapter
 
 if TYPE_CHECKING:
     from ray_curator.stages.base import ProcessingStage
@@ -113,11 +113,16 @@ class RayActorPoolExecutor(BaseExecutor):
     def _create_actor_pool(self, stage: "ProcessingStage", num_actors: int) -> ActorPool:
         """Create an ActorPool for a specific stage."""
         actors = []
-        for _ in range(num_actors):
-            actor = RayActorPoolStageAdapter.options(
-                num_cpus=stage.resources.cpus,
-                num_gpus=stage.resources.gpus,
-            ).remote(stage)
+        for i in range(num_actors):
+            actor = (
+                create_named_ray_actor_pool_stage_adapter(stage, RayActorPoolStageAdapter)
+                .options(
+                    num_cpus=stage.resources.cpus,
+                    num_gpus=stage.resources.gpus,
+                    name=f"{stage.name}-{i}",
+                )
+                .remote(stage)
+            )
             actors.append(actor)
 
         return ActorPool(actors)
@@ -129,12 +134,20 @@ class RayActorPoolExecutor(BaseExecutor):
         # Create RAFT actors using the specialized RAFT adapter
         actors = []
         for actor_idx in range(num_actors):
-            actor = RayActorPoolRAFTAdapter.options(
-                num_cpus=stage.resources.cpus,
-                num_gpus=stage.resources.gpus,
-                name=f"{stage.name}-{actor_idx}",
-            ).remote(
-                stage=stage, index=actor_idx, pool_size=num_actors, session_id=session_id, actor_name_prefix=stage.name
+            actor = (
+                create_named_ray_actor_pool_stage_adapter(stage, RayActorPoolRAFTAdapter)
+                .options(
+                    num_cpus=stage.resources.cpus,
+                    num_gpus=stage.resources.gpus,
+                    name=f"{stage.name}-{actor_idx}",
+                )
+                .remote(
+                    stage=stage,
+                    index=actor_idx,
+                    pool_size=num_actors,
+                    session_id=session_id,
+                    actor_name_prefix=stage.name,
+                )
             )
             actors.append(actor)
 

@@ -36,17 +36,12 @@ class Comms:
         nccl_root_location: str = "ray-actor",
     ) -> None:
         """
-        Construct a new CommsContext instance
-
-        Parameters
-        ----------
-        verbose : bool
-                  Print verbose logging
-        nccl_root_location : string
-                  Indicates where the NCCL's root node should be located.
-                  ['client', 'worker', 'scheduler' (default), 'ray-actor']
-
+        Args:
+            verbose (bool): Print verbose logging. Defaults to False.
+            nccl_root_location (str): Indicates where the NCCL's root node should be located.
+                ['client', 'worker', 'scheduler', 'ray-actor']. Defaults to "ray-actor".
         """
+
         self.nccl_root_location = nccl_root_location.lower()
         if self.nccl_root_location not in Comms.valid_nccl_placements:
             msg = f"nccl_root_location must be one of: {Comms.valid_nccl_placements}"

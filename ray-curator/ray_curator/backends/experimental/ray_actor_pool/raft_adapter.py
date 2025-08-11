@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from ray_curator.backends.base import WorkerMetadata
 
 
-@ray.remote
 class RayActorPoolRAFTAdapter(BaseStageAdapter):
     """RAFT Actor adapter for Ray Actor Pool backend.
 
