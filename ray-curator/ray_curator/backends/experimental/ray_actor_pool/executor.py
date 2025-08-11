@@ -6,7 +6,7 @@ from loguru import logger
 from ray.util.actor_pool import ActorPool
 
 from ray_curator.backends.base import BaseExecutor
-from ray_curator.backends.experimental.utils import execute_setup_on_node, get_available_cpu_gpu_resources
+from ray_curator.backends.experimental.utils import RayStageSpecKeys, execute_setup_on_node
 from ray_curator.backends.utils import register_loguru_serializer
 from ray_curator.tasks import EmptyTask, Task
 
@@ -82,7 +82,7 @@ class RayActorPoolExecutor(BaseExecutor):
                 )
 
                 # Check if this is a RAFT stage and create appropriate actor pool
-                if stage.ray_stage_spec().get("is_raft_actor", False):
+                if stage.ray_stage_spec().get(RayStageSpecKeys.IS_RAFT_ACTOR, False):
                     logger.info(f"  Creating RAFT actor pool for stage: {stage.name}")
                     actor_pool = self._create_raft_actor_pool(stage, num_actors, session_id)
                 else:
@@ -109,7 +109,6 @@ class RayActorPoolExecutor(BaseExecutor):
             # Clean up all Ray resources including named actors
             logger.info("Shutting down Ray to clean up all resources...")
             ray.shutdown()
-
 
     def _create_actor_pool(self, stage: "ProcessingStage", num_actors: int) -> ActorPool:
         """Create an ActorPool for a specific stage."""

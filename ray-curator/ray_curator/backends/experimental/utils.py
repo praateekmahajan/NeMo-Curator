@@ -5,7 +5,6 @@ import ray
 from loguru import logger
 
 from ray_curator.backends.base import NodeInfo, WorkerMetadata
-from ray_curator.backends.experimental.utils import get_available_cpu_gpu_resources
 from ray_curator.stages.base import ProcessingStage
 
 
@@ -27,7 +26,7 @@ def get_available_cpu_gpu_resources(init_and_shudown: bool = False) -> tuple[int
     """Get available CPU and GPU resources from Ray."""
     if init_and_shudown:
         ray.init(ignore_reinit_error=True)
-    time.sleep(0.2) # ray.available_resources() returns might have a lag
+    time.sleep(0.2)  # ray.available_resources() returns might have a lag
     available_resources = ray.available_resources()
     if init_and_shudown:
         ray.shutdown()
@@ -55,7 +54,8 @@ def execute_setup_on_node(stages: list[ProcessingStage]) -> None:
 
             ray_tasks.append(
                 _setup_stage_on_node.options(
-                    num_cpus=1,
+                    num_cpus=stage.resources.cpus or 1,
+                    num_gpus=stage.resources.gpus or 0,
                     scheduling_strategy=NodeAffinitySchedulingStrategy(node_id=node_id, soft=False),
                 ).remote(stage, node_info, worker_metadata)
             )
