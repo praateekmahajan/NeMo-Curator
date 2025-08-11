@@ -159,7 +159,3 @@ class RayActorPoolRAFTAdapter(BaseStageAdapter):
                 pass
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Error during RAFT cleanup: {e}")
-
-    def setup_on_node(self) -> None:
-        """Setup method for RAFT actors."""
-        super().setup_on_node()
