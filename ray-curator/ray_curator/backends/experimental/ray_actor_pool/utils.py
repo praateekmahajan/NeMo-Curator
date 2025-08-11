@@ -1,3 +1,4 @@
+import math
 from typing import TYPE_CHECKING
 
 import ray
@@ -45,8 +46,11 @@ def calculate_optimal_actors_for_stage(
         msg = f"No resources available for stage {stage.name}."
         raise ValueError(msg)
 
-    # Don't create more actors than tasks
-    optimal_actors = min(num_tasks, max_actors_resources)
+    number_of_batches = (
+        math.ceil(num_tasks / stage.batch_size) if stage.batch_size is not None and stage.batch_size > 0 else num_tasks
+    )
+    # Don't create more actors than batches of work
+    optimal_actors = min(number_of_batches, max_actors_resources)
 
     # Ensure at least 1 actor if we have tasks
     optimal_actors = max(1, optimal_actors) if num_tasks > 0 else 0
