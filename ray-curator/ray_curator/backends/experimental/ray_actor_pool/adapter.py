@@ -1,4 +1,3 @@
-import ray
 from loguru import logger
 
 from ray_curator.backends.base import BaseStageAdapter
@@ -6,7 +5,6 @@ from ray_curator.backends.experimental.utils import get_worker_metadata_and_node
 from ray_curator.stages.base import ProcessingStage
 
 
-@ray.remote
 class RayActorPoolStageAdapter(BaseStageAdapter):
     """Adapts ProcessingStage to Ray actors for use with ActorPool.
 
