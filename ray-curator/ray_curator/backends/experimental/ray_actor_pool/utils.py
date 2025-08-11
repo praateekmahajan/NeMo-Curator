@@ -71,6 +71,7 @@ def create_named_ray_actor_pool_stage_adapter(
 
     Args:
         stage (ProcessingStage): ProcessingStage to adapt
+        cls (type): The adapter class to inherit from
 
     Returns:
         ActorClass: A ray.remote decorated class that can be used to create actors
