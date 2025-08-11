@@ -11,6 +11,7 @@ from ray_curator.utils.file_utils import get_fs
 if TYPE_CHECKING:
     import cudf
 
+
 class DeduplicationIO:
     def __init__(
         self,
