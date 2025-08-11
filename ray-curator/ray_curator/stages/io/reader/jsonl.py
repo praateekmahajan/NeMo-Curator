@@ -113,7 +113,35 @@ class JsonlReaderStage(ProcessingStage[FileGroupTask, DocumentBatch]):
             return None
 
         # Concatenate all dataframes
-        return pd.concat(dfs, ignore_index=True)
+        df = pd.concat(dfs, ignore_index=True)
+        return self.assign_id(file_paths, df)
+
+    def assign_id(self, filepath: str | list[str], df: pd.DataFrame) -> pd.DataFrame:
+        import numpy as np
+        import ray
+
+        from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
+        if CURATOR_DEDUP_ID_STR not in df.columns:
+            # Only need the ID generator if _curator_id is missing
+            # Check if the actor with name "id_generator" exists
+            try:
+                id_generator = ray.get_actor("id_generator")
+                msg = (
+                    "ID generator is required when _curator_id column is not present in the data, "
+                    "but self.id_generator is None. The actor 'id_generator' exists, but was not provided."
+                )
+            except ValueError:
+                msg = (
+                    "ID generator is required when _curator_id column is not present in the data, "
+                    "and the actor 'id_generator' does not exist. Please start the id_generator actor."
+                )
+                raise RuntimeError(msg)
+            else:
+                num_rows = len(df)
+                min_id = ray.get(id_generator.register_batch.remote(filepath, num_rows))
+                df[CURATOR_DEDUP_ID_STR] = np.arange(min_id, min_id + num_rows)
+        return df
+
 
     def _read_with_pyarrow(
         self, file_paths: list[str], reader_kwargs: dict[str, Any], columns: list[str] | None

@@ -12,11 +12,17 @@ from loguru import logger
 
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 from ray_curator.pipeline import Pipeline
-from ray_curator.stages.deduplication.semantic import IdentifySemanticDuplicatesStage, KMeansStage, PairwiseStage
+from ray_curator.stages.deduplication.semantic import (
+    IdentifySemanticDuplicatesStage,
+    KMeansStage,
+    PairwiseStage,
+    RemoveDuplicatesByIdStage,
+)
 from ray_curator.stages.io.reader import JsonlReader
 from ray_curator.stages.io.writer import JsonlWriter, ParquetWriter
 from ray_curator.stages.text.embedders import DistributedEmbeddingModelStage
 
+from ray_curator.stages.deduplication.id_generator import IdGenerator
 
 def main() -> int:
     """Main function to run the KMeans pipeline."""
@@ -33,6 +39,8 @@ def main() -> int:
     kmeans_output_path = str(Path(args.output_path) / "kmeans")
     pairwise_input_path = str(Path(args.output_path) / "pairwise")
     duplicates_output_path = str(Path(args.output_path) / "duplicates")
+
+    id_generator = IdGenerator.options(name="id_generator", lifetime="detached").remote()
 
     if args.executor == "xenna":
         from ray_curator.backends.xenna import XennaExecutor
@@ -160,6 +168,32 @@ def main() -> int:
             df = pd.read_parquet(path)
 
         logger.info(f"{path.replace(args.output_path, '')} {list(df.columns)} with {len(df):,} rows")
+
+    # Removal pipeline: JsonlReader -> RemoveDuplicatesByIdStage -> JsonlWriter
+    removal_output_path = str(Path(args.output_path) / "deduplicated_jsonl")
+    writer_after_removal = JsonlWriter(output_dir=removal_output_path)
+
+    removal_pipeline = Pipeline(
+        name="remove_duplicates_pipeline",
+        description="Filter duplicates from original JSONL using ID anti-join",
+        stages=[
+            JsonlReader(
+                file_paths=args.input_path,
+                files_per_partition=1,
+            ),
+            RemoveDuplicatesByIdStage(
+                duplicates_path=duplicates_output_path,
+                verbose=True,
+            ),
+            writer_after_removal,
+        ],
+    )
+
+    t3 = time.perf_counter()
+    removal_results = removal_pipeline.run(main_executor)
+    time_taken_dict["removal"] = time.perf_counter() - t3
+    for task_out in removal_results:
+        logger.info(task_out)
 
     return 0
 
