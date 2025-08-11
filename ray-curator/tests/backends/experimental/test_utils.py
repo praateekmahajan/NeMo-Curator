@@ -37,7 +37,6 @@ class TestExecuteSetupOnNode:
             def setup_on_node(
                 self, node_info: NodeInfo | None = None, worker_metadata: WorkerMetadata | None = None
             ) -> None:
-                print(f"Executing setup on node {node_info} for {self.name} and worker {worker_metadata}")
                 # Write a file to record this call
                 node_id = node_info.node_id if node_info else "unknown"
                 worker_id = worker_metadata.worker_id if worker_metadata else "unknown"

@@ -54,8 +54,8 @@ def execute_setup_on_node(stages: list[ProcessingStage]) -> None:
 
             ray_tasks.append(
                 _setup_stage_on_node.options(
-                    num_cpus=stage.resources.cpus or 1,
-                    num_gpus=stage.resources.gpus or 0,
+                    num_cpus=stage.resources.cpus if stage.resources is not None else 1,
+                    num_gpus=stage.resources.gpus if stage.resources is not None else 0,
                     scheduling_strategy=NodeAffinitySchedulingStrategy(node_id=node_id, soft=False),
                 ).remote(stage, node_info, worker_metadata)
             )
