@@ -16,18 +16,16 @@ def get_array_from_df(df: "cudf.DataFrame", embedding_col: str) -> "cp.ndarray":
     return df[embedding_col].list.leaves.values.reshape(len(df), -1)
 
 
-
-def break_parquet_partition_into_groups(files: list[str], embedding_dim: int | None = None, storage_options: dict[str, Any] | None = None) -> list[list[str]]:
+def break_parquet_partition_into_groups(
+    files: list[str], embedding_dim: int | None = None, storage_options: dict[str, Any] | None = None
+) -> list[list[str]]:
     """Break parquet files into groups to avoid cudf 2bn row limit."""
     if embedding_dim is None:
         # Default aggressive assumption of 1024 dimensional embedding
         embedding_dim = 1024
 
     cudf_max_num_rows = 2_000_000_000  # cudf only allows 2bn rows
-    cudf_max_num_elements = (
-        cudf_max_num_rows / embedding_dim
-    )  # cudf considers each element in an array to be a row
-
+    cudf_max_num_elements = cudf_max_num_rows / embedding_dim  # cudf considers each element in an array to be a row
 
     import pyarrow.parquet as pq
     from fsspec.parquet import open_parquet_file

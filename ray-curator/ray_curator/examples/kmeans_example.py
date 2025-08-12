@@ -8,21 +8,22 @@ import time
 from pathlib import Path
 
 import pandas as pd
+import ray
 from loguru import logger
 
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 from ray_curator.pipeline import Pipeline
+from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR, IdGenerator
 from ray_curator.stages.deduplication.semantic import (
     IdentifySemanticDuplicatesStage,
     KMeansStage,
     PairwiseStage,
     RemoveDuplicatesByIdStage,
 )
-from ray_curator.stages.io.reader import JsonlReader
-from ray_curator.stages.io.writer import JsonlWriter, ParquetWriter
 from ray_curator.stages.text.embedders import DistributedEmbeddingModelStage
+from ray_curator.stages.text.io.reader import JsonlReader
+from ray_curator.stages.text.io.writer import JsonlWriter, ParquetWriter
 
-from ray_curator.stages.deduplication.id_generator import IdGenerator
 
 def main() -> int:
     """Main function to run the KMeans pipeline."""
@@ -40,7 +41,15 @@ def main() -> int:
     pairwise_input_path = str(Path(args.output_path) / "pairwise")
     duplicates_output_path = str(Path(args.output_path) / "duplicates")
 
-    id_generator = IdGenerator.options(name="id_generator", lifetime="detached").remote()
+    # Initialize or get existing ID generator actor
+    try:
+        # Try to get existing actor first
+        _ = ray.get_actor("id_generator", namespace="id_generator")
+        logger.info("Using existing ID generator actor")
+    except ValueError:
+        # Actor doesn't exist, create a new one
+        _ = IdGenerator.options(name="id_generator", namespace="id_generator", lifetime="detached").remote()
+        logger.info("Created new ID generator actor")
 
     if args.executor == "xenna":
         from ray_curator.backends.xenna import XennaExecutor
@@ -68,6 +77,7 @@ def main() -> int:
             JsonlReader(
                 file_paths=args.input_path,
                 files_per_partition=1,
+                generate_ids=True,
             ),
             DistributedEmbeddingModelStage(
                 model_identifier=args.model_identifier,
@@ -89,7 +99,8 @@ def main() -> int:
         stages=[
             KMeansStage(
                 input_path=embedding_output_path,
-                id_field=args.id_field,
+                # id_field=args.id_field,
+                id_field=CURATOR_DEDUP_ID_STR,
                 embedding_field=args.embedding_field,
                 output_path=kmeans_output_path,
                 n_clusters=args.n_clusters,
@@ -118,7 +129,8 @@ def main() -> int:
         description="Pipeline for pairwise clustering on document embeddings",
         stages=[
             PairwiseStage(
-                id_field=args.id_field,
+                # id_field=args.id_field,
+                id_field=CURATOR_DEDUP_ID_STR,
                 embedding_field=args.embedding_field,
                 input_path=kmeans_output_path,
                 output_path=pairwise_input_path,
@@ -147,31 +159,12 @@ def main() -> int:
     for task_out in pairwise_results:
         logger.info(task_out)
 
-    logger.success(f"Time taken: {[(k, f'{v:.2f}s') for k, v in time_taken_dict.items()]}")
-    logger.success(f"Time taken: {[(k, f'{v:.2f}s') for k, v in time_taken_dict.items()]}")
-    for path in [
-        args.input_path,
-        embedding_output_path,
-        kmeans_output_path,
-        pairwise_input_path,
-        duplicates_output_path,
-    ]:
-        if path == args.input_path:
-            df = pd.concat(
-                [
-                    pd.read_json(os.path.join(path, f), lines=True, orient="records")
-                    for f in os.listdir(path)
-                    if f.endswith(".jsonl")
-                ]
-            )
-        else:
-            df = pd.read_parquet(path)
-
-        logger.info(f"{path.replace(args.output_path, '')} {list(df.columns)} with {len(df):,} rows")
-
     # Removal pipeline: JsonlReader -> RemoveDuplicatesByIdStage -> JsonlWriter
     removal_output_path = str(Path(args.output_path) / "deduplicated_jsonl")
-    writer_after_removal = JsonlWriter(output_dir=removal_output_path)
+    if args.file_type == "jsonl":
+        writer_after_removal = JsonlWriter(output_dir=removal_output_path)
+    else:
+        writer_after_removal = ParquetWriter(output_dir=removal_output_path)
 
     removal_pipeline = Pipeline(
         name="remove_duplicates_pipeline",
@@ -180,6 +173,7 @@ def main() -> int:
             JsonlReader(
                 file_paths=args.input_path,
                 files_per_partition=1,
+                assign_ids=True,
             ),
             RemoveDuplicatesByIdStage(
                 duplicates_path=duplicates_output_path,
@@ -194,6 +188,28 @@ def main() -> int:
     time_taken_dict["removal"] = time.perf_counter() - t3
     for task_out in removal_results:
         logger.info(task_out)
+
+    logger.success(f"Time taken: {[(k, f'{v:.2f}s') for k, v in time_taken_dict.items()]}")
+    for path in [
+        args.input_path,
+        embedding_output_path,
+        kmeans_output_path,
+        pairwise_input_path,
+        duplicates_output_path,
+        removal_output_path,
+    ]:
+        if path == args.input_path or (path == removal_output_path and args.file_type == "jsonl"):
+            df = pd.concat(
+                [
+                    pd.read_json(os.path.join(path, f), lines=True, orient="records")
+                    for f in os.listdir(path)
+                    if f.endswith(".jsonl")
+                ]
+            )
+        else:
+            df = pd.read_parquet(path)
+
+        logger.info(f"{path.replace(args.output_path, '')} {list(df.columns)} with {len(df):,} rows")
 
     return 0
 

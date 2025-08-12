@@ -55,7 +55,9 @@ class EmbeddingModelStage(ModelStage):
         self.model.eval()
         self.model.to("cuda")
 
-    def process_model_output(self, outputs: torch.Tensor, model_input_batch: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
+    def process_model_output(
+        self, outputs: torch.Tensor, model_input_batch: dict[str, torch.Tensor] | None = None
+    ) -> torch.Tensor:
         """Process model outputs to create embeddings."""
         if self.pooling == "mean_pooling":
             return self._mean_pooling(outputs, model_input_batch[ATTENTION_MASK_COLUMN])
@@ -133,7 +135,7 @@ class DistributedEmbeddingModelStage(CompositeStage[DocumentBatch, DocumentBatch
                 model_inference_batch_size=self.model_inference_batch_size,
                 has_seq_order=self.sort_by_length,
                 padding_side=self.padding_side,
-            )
+            ),
         ]
 
     def decompose(self) -> list[ProcessingStage]:

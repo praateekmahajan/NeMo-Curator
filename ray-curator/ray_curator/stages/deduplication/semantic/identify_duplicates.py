@@ -38,7 +38,7 @@ class IdentifySemanticDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTa
         self.verbose = verbose
         self.input_storage_options = input_storage_options
         self.output_storage_options = output_storage_options
-        self.fs : None | fsspec.AbstractFileSystem = None
+        self.fs: None | fsspec.AbstractFileSystem = None
         self._name = "IdentifySemanticDuplicatesStage"
 
     def setup(self, _: Optional["WorkerMetadata"] = None) -> None:

@@ -52,11 +52,11 @@ def pairwise_cosine_similarity_batched(
 
     if device == "cuda":
         import cupy as cp
+
         return cp.asarray(max_similarity), cp.asarray(max_indices)
     else:
         # convert to numpy arrays
         return max_similarity.numpy(), max_indices.numpy()
-
 
 
 class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGroupTask], DeduplicationIO):
@@ -118,11 +118,11 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
             df = self.read_parquet(
                 file_group,
                 columns=[self.id_field, self.embedding_field],
-                storage_options=self.input_storage_options
+                storage_options=self.input_storage_options,
+                assign_id=False,
             )
             dfs.append(df)
             num_rows += len(df)
-
 
         if not dfs:
             logger.warning(f"No data found for cluster {cluster_id}")
@@ -131,7 +131,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
                 dataset_name=task.dataset_name,
                 _metadata=task._metadata,
                 _stage_perf=task._stage_perf,
-                data=[]
+                data=[],
             )
 
         has_curator_id = CURATOR_DEDUP_ID_STR in dfs[0].columns
@@ -144,17 +144,14 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
 
         # Handle single item clusters
         if num_rows == 1:
-            result_df = cudf.DataFrame({
-                "id": dfs[0][self.id_field],
-                "max_id": dfs[0][self.id_field],
-                "cosine_sim_score": cudf.Series([0], dtype="float32")
-            })
-            self.write_parquet(
-                result_df,
-                output_path,
-                storage_options=self.output_storage_options,
-                index=False
+            result_df = cudf.DataFrame(
+                {
+                    "id": dfs[0][self.id_field],
+                    "max_id": dfs[0][self.id_field],
+                    "cosine_sim_score": cudf.Series([0], dtype="float32"),
+                }
             )
+            self.write_parquet(result_df, output_path, storage_options=self.output_storage_options, index=False)
             return FileGroupTask(
                 task_id=task.task_id,
                 dataset_name=task.dataset_name,
@@ -163,12 +160,14 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
                     "centroid_id": cluster_id,
                 },
                 _stage_perf=task._stage_perf,
-                data=[os.path.join(self.output_path, f"cluster_{cluster_id}.parquet")]
+                data=[os.path.join(self.output_path, f"cluster_{cluster_id}.parquet")],
             )
 
         # Extract embeddings and compute similarities
         # Concatenate embeddings in cupy to avoid the 2bn limit in cudf
-        cluster_embeddings = torch.cat([torch.as_tensor(get_array_from_df(df, self.embedding_field), device="cuda") for df in dfs])
+        cluster_embeddings = torch.cat(
+            [torch.as_tensor(get_array_from_df(df, self.embedding_field), device="cuda") for df in dfs]
+        )
         ids = cudf.concat([df[self.id_field] for df in dfs])
 
         # Compute pairwise similarities
@@ -194,12 +193,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
             logger.debug(f"Pairwise computation for cluster {cluster_id} done in {(t3 - t2):.2f} seconds")
 
         # Write results
-        self.write_parquet(
-            points_to_remove_df,
-            output_path,
-            storage_options=self.output_storage_options,
-            index=False
-        )
+        self.write_parquet(points_to_remove_df, output_path, storage_options=self.output_storage_options, index=False)
 
         t4 = time.perf_counter()
         if self.verbose:
@@ -210,7 +204,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[BatchedFileGroupTask, FileGr
             dataset_name=task.dataset_name,
             _metadata={**task._metadata, "centroid_id": cluster_id},
             _stage_perf=task._stage_perf,
-            data=[output_path]
+            data=[output_path],
         )
 
 

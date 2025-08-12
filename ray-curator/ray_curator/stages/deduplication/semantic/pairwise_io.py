@@ -81,7 +81,9 @@ class PairwiseFilePartitioningStage(ProcessingStage[_EmptyTask, BatchedFileGroup
                 centroid_id = int(entry.split("centroid=")[-1])
                 centroid_dirs[centroid_id] = entry
 
-        logger.debug(f"Found {len(centroid_dirs)} centroid directories e.g. {next(iter(centroid_dirs.values())) if centroid_dirs else None}")
+        logger.debug(
+            f"Found {len(centroid_dirs)} centroid directories e.g. {next(iter(centroid_dirs.values())) if centroid_dirs else None}"
+        )
 
         if not centroid_dirs:
             logger.warning(f"No centroid directories found in: {self.input_path}")

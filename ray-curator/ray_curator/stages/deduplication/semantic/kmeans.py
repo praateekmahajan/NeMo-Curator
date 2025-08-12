@@ -101,11 +101,17 @@ class KMeansReadFitWriteStage(ProcessingStage[BatchedFileGroupTask, _EmptyTask],
         for file_paths in task.data:
             if task.filetype == "parquet":
                 df = self.read_parquet(
-                    file_paths, columns=[self.id_field, self.embedding_field], storage_options=self.input_storage_options
+                    file_paths,
+                    columns=[self.id_field, self.embedding_field],
+                    storage_options=self.input_storage_options,
+                    assign_id=False,
                 )
             elif task.filetype == "jsonl":
                 df = self.read_jsonl(
-                    file_paths, columns=[self.id_field, self.embedding_field], storage_options=self.input_storage_options
+                    file_paths,
+                    columns=[self.id_field, self.embedding_field],
+                    storage_options=self.input_storage_options,
+                    assign_id=False,
                 )
             else:
                 msg = f"Unsupported data type: {task.filetype}"

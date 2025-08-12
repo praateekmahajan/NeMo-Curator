@@ -93,7 +93,6 @@ class KMeansFilePartitioningStage(ProcessingStage[_EmptyTask, BatchedFileGroupTa
             logger.warning(f"No files found matching pattern: {self.file_paths}")
             return []
 
-
         # Handle case where we have more partitions than files
         if len(files) < self.num_output_partitions:
             logger.warning(
