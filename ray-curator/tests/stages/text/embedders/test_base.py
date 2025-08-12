@@ -11,17 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import pytest
+
+# ruff: noqa: E402
+cudf = pytest.importorskip("cudf", reason="EmbeddingCreatorStage tests require cudf")
 
 from unittest.mock import Mock, patch
 
 import numpy as np
 import pandas as pd
-import pytest
 import torch
 import torch.nn.functional as F  # noqa: N812
 from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 from ray_curator.stages.text.embedders.base import EmbeddingCreatorStage, EmbeddingModelStage
+from ray_curator.stages.text.models.tokenizer import TokenizerStage
 from ray_curator.stages.text.models.utils import ATTENTION_MASK_COLUMN, INPUT_ID_COLUMN
 from ray_curator.tasks import DocumentBatch
 
@@ -224,8 +228,6 @@ class TestEmbeddingCreatorStage:
         )
 
         # Test decomposition and stage types
-        from ray_curator.stages.text.models.tokenizer import TokenizerStage
-
         stages = stage.decompose()
         tokenizer_stage, embedding_stage = stages[0], stages[1]
         assert len(stages) == 2
@@ -303,6 +305,7 @@ class TestEmbeddingCreatorStage:
         # Decompose and setup stages
         stages = stage.decompose()
         for sub_stage in stages:
+            sub_stage.setup_on_node()
             sub_stage.setup()
 
         # Run stages sequentially
