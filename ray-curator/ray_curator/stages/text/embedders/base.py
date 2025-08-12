@@ -1,4 +1,17 @@
-import os
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from dataclasses import dataclass
 from typing import Literal
 
@@ -7,19 +20,16 @@ import cupy as cp
 import pandas as pd
 import torch
 import torch.nn.functional as F  # noqa: N812
-from crossfit.backend.cudf.series import create_list_series_from_1d_or_2d_ar
 from transformers import AutoModel
 
 from ray_curator.backends.base import WorkerMetadata
+from ray_curator.stages.base import CompositeStage, ProcessingStage
 from ray_curator.stages.text.models.model import ModelStage
 from ray_curator.stages.text.models.tokenizer import TokenizerStage
 from ray_curator.stages.text.models.utils import ATTENTION_MASK_COLUMN
-
-os.environ["RAPIDS_NO_INITIALIZE"] = "1"
-
-
-from ray_curator.stages.base import CompositeStage, ProcessingStage
 from ray_curator.tasks import DocumentBatch
+
+from .utils import create_list_series_from_1d_or_2d_ar
 
 
 class EmbeddingModelStage(ModelStage):
@@ -76,7 +86,7 @@ class EmbeddingModelStage(ModelStage):
         df_gpu = cudf.DataFrame(index=df_cpu.index)
         df_gpu[self.embedding_field] = create_list_series_from_1d_or_2d_ar(collected_output, index=df_gpu.index)
         # Add embedding_field back to cpu dataframe
-        df_cpu[self.embedding_field] = df_gpu.to_pandas()[self.embedding_field]
+        df_cpu[self.embedding_field] = df_gpu[self.embedding_field].to_pandas()
         del df_gpu
         return df_cpu
 
@@ -101,8 +111,8 @@ class EmbeddingModelStage(ModelStage):
 
 
 @dataclass(kw_only=True)
-class DistributedEmbeddingModelStage(CompositeStage[DocumentBatch, DocumentBatch]):
-    model_identifier: str
+class EmbeddingCreatorStage(CompositeStage[DocumentBatch, DocumentBatch]):
+    model_identifier: str = "sentence-transformers/all-MiniLM-L6-v2"
     text_field: str = "text"
     embedding_field: str = "embeddings"
     max_chars: int | None = None
@@ -126,6 +136,7 @@ class DistributedEmbeddingModelStage(CompositeStage[DocumentBatch, DocumentBatch
                 max_seq_length=self.max_seq_length,
                 padding_side=self.padding_side,
                 sort_by_length=self.sort_by_length,
+                unk_token=self.unk_token,
             ),
             EmbeddingModelStage(
                 model_identifier=self.model_identifier,
