@@ -14,32 +14,54 @@
 
 import cudf
 import cupy as cp
+import pytest
+import torch
 
 from ray_curator.stages.text.embedders.utils import create_list_series_from_1d_or_2d_ar
 
 
+@pytest.mark.gpu
 class TestCreateListSeriesFrom1dOr2dAr:
     """Test create_list_series_from_1d_or_2d_ar function."""
 
-    def test_embedding_creation_like_base_usage(self):
-        """Test the function as used in EmbeddingModelStage.create_output_dataframe."""
-        # Simulate embeddings from a model (2D array: batch_size x embedding_dim)
+    def test_create_list_series_from_1d_or_2d_ar_1d(self):
+        tensor = torch.tensor([101, 102, 103])
+        index = [1, 2, 3]
+        series = create_list_series_from_1d_or_2d_ar(tensor, index)
+        assert isinstance(series, cudf.Series)
+        expected = cudf.Series([[101], [102], [103]], index=index)
+        # convert to pandas because cudf.Series.equals doesn't work for list series
+        assert series.to_pandas().equals(expected.to_pandas())
+
+    def test_create_list_series_from_1d_or_2d_ar_2d(self):
+        tensor = torch.tensor([[101, 102], [103, 104], [105, 106]])
+        index = [1, 2, 3]
+        series = create_list_series_from_1d_or_2d_ar(tensor, index)
+        assert isinstance(series, cudf.Series)
+        expected = cudf.Series([[101, 102], [103, 104], [105, 106]], index=index)
+        # convert to pandas because cudf.Series.equals doesn't work for list series
+        assert series.to_pandas().equals(expected.to_pandas())
+
+    def test_embedding_creation_with_shuffled_index(self):
+        """Test the function with a reordered/shuffled index as suggested by colleague."""
         collected_output = cp.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]])
 
-        # Create a GPU dataframe with index like in the actual usage
-        df_gpu = cudf.DataFrame(index=cudf.RangeIndex(3))
+        # Create a GPU dataframe with reordered index
+        df_gpu = cudf.DataFrame({"col_a": [1, 2, 3]})
+        df_gpu = df_gpu.iloc[[2, 0, 1]]  # Reorder: [2, 0, 1]
 
-        # Test the function call as it appears in base.py
-        embedding_series = create_list_series_from_1d_or_2d_ar(collected_output, index=df_gpu.index)
+        series = create_list_series_from_1d_or_2d_ar(collected_output, index=df_gpu.index)
 
-        # Verify the result
-        assert isinstance(embedding_series, cudf.Series)
-        assert len(embedding_series) == 3
-        assert embedding_series.index.equals(df_gpu.index)
+        assert isinstance(series, cudf.Series)
+        assert series.index.equals(df_gpu.index)
 
-        # Convert to pandas to check the actual embedding values
-        embedding_series_cpu = embedding_series.to_pandas()
+        # The embeddings should still be in the same order as the input array
+        # but the index should be shuffled [2, 0, 1]
         expected_embeddings = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]
+        expected_index = [2, 0, 1]
 
-        for i, expected in enumerate(expected_embeddings):
-            assert embedding_series_cpu.iloc[i] == expected
+        # Convert the series (not df_gpu) to pandas to check values
+        embedding_series_cpu = series.to_pandas()
+        for i, (expected_embedding, expected_idx) in enumerate(zip(expected_embeddings, expected_index, strict=False)):
+            assert embedding_series_cpu.iloc[i] == expected_embedding
+            assert embedding_series_cpu.index[i] == expected_idx

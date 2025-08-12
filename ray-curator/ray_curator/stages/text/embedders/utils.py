@@ -12,14 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
+
 import cudf
 import cupy as cp
 import pylibcudf as plc
 
 
-def create_list_series_from_1d_or_2d_ar(ar: cp.ndarray, index: cudf.Index) -> cudf.Series:
-    """
-    Create a cudf list series  from 2d arrays
+def create_list_series_from_1d_or_2d_ar(ar: Any, index: cudf.Index) -> cudf.Series:  # noqa: ANN401
+    """Create a cudf list series from 2d arrays
+
+    Args:
+        ar (cp.ndarray): any object that can be converted to a cupy array (cupy, numpy, torch, etc.)
+        index (cudf.Index): index of the the dataframe to be returned
+
+    Returns:
+        cudf.Series: cudf series with the index respected
     """
     arr = cp.asarray(ar)
     if len(arr.shape) == 1:

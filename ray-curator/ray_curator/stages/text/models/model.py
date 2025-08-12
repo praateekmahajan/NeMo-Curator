@@ -112,7 +112,7 @@ class ModelStage(ProcessingStage[DocumentBatch, DocumentBatch]):
 
     def process_model_output(
         self, outputs: torch.Tensor, model_input_batch: dict[str, torch.Tensor] | None = None
-    ) -> dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray] | torch.Tensor:
         msg = "Subclasses must implement this method"
         raise NotImplementedError(msg)
 
