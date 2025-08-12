@@ -121,7 +121,6 @@ class EmbeddingCreatorStage(CompositeStage[DocumentBatch, DocumentBatch]):
     embedding_pooling: Literal["mean_pooling", "last_token"] = "mean_pooling"
     model_inference_batch_size: int = 256
     sort_by_length: bool = True
-    unk_token: bool = False
     hf_token: str | None = None
 
     def __post_init__(self) -> None:
@@ -136,7 +135,6 @@ class EmbeddingCreatorStage(CompositeStage[DocumentBatch, DocumentBatch]):
                 max_seq_length=self.max_seq_length,
                 padding_side=self.padding_side,
                 sort_by_length=self.sort_by_length,
-                unk_token=self.unk_token,
             ),
             EmbeddingModelStage(
                 model_identifier=self.model_identifier,

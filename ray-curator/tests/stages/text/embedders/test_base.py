@@ -220,7 +220,6 @@ class TestEmbeddingCreatorStage:
             embedding_pooling="last_token",
             model_inference_batch_size=128,
             sort_by_length=False,
-            unk_token=True,
             hf_token="test-token",  # noqa:S106
         )
 
@@ -241,7 +240,7 @@ class TestEmbeddingCreatorStage:
         assert tokenizer_stage.max_seq_length == stage.max_seq_length == 256
         assert tokenizer_stage.padding_side == stage.padding_side == "left"
         assert tokenizer_stage.sort_by_length == stage.sort_by_length is False
-        assert tokenizer_stage.unk_token == stage.unk_token is True
+        assert tokenizer_stage.unk_token is False
 
         # Verify all EmbeddingModelStage parameters
         assert embedding_stage.model_identifier == stage.model_identifier == "test-model"
