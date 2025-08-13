@@ -1,42 +1,35 @@
 """Test suite for MinHashStage."""
 
 # ruff: noqa: E402
+import contextlib
 import os
 from pathlib import Path
 
 import pandas as pd
 import pytest
-import ray
 
 cudf = pytest.importorskip("cudf", reason="MinHashStage tests require cudf")
 
 from ray_curator.stages.deduplication.fuzzy.minhash import MinHashStage
 from ray_curator.stages.deduplication.id_generator import (
     CURATOR_DEDUP_ID_STR,
-    CURATOR_ID_GENERATOR_ACTOR_NAME,
+    create_id_generator_actor,
+    kill_id_generator_actor,
 )
 from ray_curator.tasks import FileGroupTask
 
 
-@pytest.fixture(scope="module")
-def ray_fixture() -> None:
-    """Initialize and shutdown Ray for tests."""
-    ray.init(ignore_reinit_error=True)
-    yield
-    ray.shutdown()
-
-
 @pytest.fixture
-def cleanup_id_generator() -> None:
-    """Cleanup ID generator actor after each test."""
+def id_generator_actor(shared_ray_client: None) -> None:  # noqa: ARG001
+    """Create and manage ID generator actor for each test."""
+    # Create the ID generator actor
+    create_id_generator_actor()
+
     yield
+
     # Cleanup after test completes
-    try:
-        id_actor = ray.get_actor(CURATOR_ID_GENERATOR_ACTOR_NAME)
-        ray.kill(id_actor)
-    except ValueError:
-        # Actor doesn't exist, which is fine
-        pass
+    with contextlib.suppress(Exception):
+        kill_id_generator_actor()
 
 
 @pytest.fixture
@@ -133,7 +126,7 @@ class TestMinHashStage:
             (256, 10, "content"),  # Test alternative column name
         ],
     )
-    @pytest.mark.usefixtures("ray_fixture", "cleanup_id_generator")
+    @pytest.mark.usefixtures("id_generator_actor")
     def test_minhash_processing(  # noqa: PLR0913
         self,
         input_task: FileGroupTask,
@@ -212,7 +205,7 @@ class TestMinHashStage:
             else cudf.core.dtypes.ListDtype("uint32")
         )
 
-    @pytest.mark.usefixtures("ray_fixture", "cleanup_id_generator")
+    @pytest.mark.usefixtures("id_generator_actor")
     def test_error_handling_missing_column(self, tmp_path: Path) -> None:
         """Test error handling when text column is missing."""
         # Create data without the expected column
@@ -237,7 +230,7 @@ class TestMinHashStage:
         with pytest.raises(KeyError):
             stage.process(input_task)
 
-    @pytest.mark.usefixtures("ray_fixture", "cleanup_id_generator")
+    @pytest.mark.usefixtures("id_generator_actor")
     def test_empty_input_handling(self, tmp_path: Path) -> None:
         """Test handling of empty input files."""
         # Create empty dataframe
@@ -275,7 +268,7 @@ class TestMinHashStage:
         with pytest.raises(RuntimeError, match="MinHash processor or ID generator not initialized"):
             stage.process(input_task)
 
-    @pytest.mark.usefixtures("ray_fixture", "cleanup_id_generator")
+    @pytest.mark.usefixtures("id_generator_actor")
     def test_large_text_handling(self, tmp_path: Path) -> None:
         """Test handling of large text documents."""
         # Create data with varying text sizes
@@ -316,7 +309,7 @@ class TestMinHashStage:
         sig_lengths = result_df["_minhash_signature"].list.len()
         assert (sig_lengths == 128).all()
 
-    @pytest.mark.usefixtures("ray_fixture", "cleanup_id_generator")
+    @pytest.mark.usefixtures("id_generator_actor")
     def test_special_characters_and_unicode(self, tmp_path: Path) -> None:
         """Test handling of special characters and unicode text."""
         # Create data with special characters and unicode
@@ -367,7 +360,7 @@ class TestMinHashStage:
                     f"Different texts at indices {i} and {j} should have different minhashes"
                 )
 
-    @pytest.mark.usefixtures("ray_fixture", "cleanup_id_generator")
+    @pytest.mark.usefixtures("id_generator_actor")
     def test_setup_idempotency(self, tmp_path: Path) -> None:
         """Test that calling setup multiple times doesn't cause issues and IDs continue from where they left off."""
         # Create first stage
