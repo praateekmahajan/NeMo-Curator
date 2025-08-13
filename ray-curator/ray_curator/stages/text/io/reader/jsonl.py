@@ -265,8 +265,8 @@ class JsonlReader(CompositeStage[_EmptyTask, DocumentBatch]):
                 columns=self.columns,
                 reader=self.reader,
                 reader_kwargs=self.reader_kwargs or {},
-                generate_ids=self._generate_ids,
-                assign_ids=self._assign_ids,
+                _generate_ids=self._generate_ids,
+                _assign_ids=self._assign_ids,
             ),
         ]
 
