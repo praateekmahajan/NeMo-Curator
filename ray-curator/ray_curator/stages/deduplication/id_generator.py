@@ -111,7 +111,6 @@ def create_id_generator_actor(filepath: str | None = None) -> None:
 
     finally:
         # Shutdown Ray to allow future pipelines to call ray.init with their own configuration
-        logger.info("Shutting down Ray for create_id_generator_actor")
         ray.shutdown()
 
 

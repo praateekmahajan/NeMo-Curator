@@ -22,6 +22,7 @@ from ray_curator.stages.text.io.reader.jsonl import JsonlReader
 from ray_curator.tasks import DocumentBatch
 
 ray_version = Version(importlib.metadata.version("ray"))
+# TODO: Some Ray Data tests are skipped because they require ray >= 2.49.0 see https://github.com/ray-project/ray/issues/54841
 
 
 # File format configurations
