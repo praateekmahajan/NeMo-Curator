@@ -20,7 +20,8 @@ import pylibcudf as plc
 
 
 def create_list_series_from_1d_or_2d_ar(ar: Any, index: cudf.Index) -> cudf.Series:  # noqa: ANN401
-    """Create a cudf list series from 2d arrays
+    """Create a cudf list series from 2d arrays.
+    This code comes from https://github.com/rapidsai/crossfit/blob/76f74d0d927cf76313a3960d7dd5575d1dff2f06/crossfit/backend/cudf/series.py#L20-L32
 
     Args:
         ar (cp.ndarray): any object that can be converted to a cupy array (cupy, numpy, torch, etc.)
