@@ -20,7 +20,7 @@ from ray_curator.tasks import FileGroupTask
 
 
 @pytest.fixture
-def id_generator_actor(shared_ray_client: None) -> None:  # noqa: ARG001
+def ray_client_with_id_generator(shared_ray_client: None) -> None:  # noqa: ARG001
     """Create and manage ID generator actor for each test."""
     # Create the ID generator actor
     create_id_generator_actor()
@@ -126,7 +126,7 @@ class TestMinHashStage:
             (256, 10, "content"),  # Test alternative column name
         ],
     )
-    @pytest.mark.usefixtures("id_generator_actor")
+    @pytest.mark.usefixtures("ray_client_with_id_generator")
     def test_minhash_processing(  # noqa: PLR0913
         self,
         input_task: FileGroupTask,
@@ -205,7 +205,7 @@ class TestMinHashStage:
             else cudf.core.dtypes.ListDtype("uint32")
         )
 
-    @pytest.mark.usefixtures("id_generator_actor")
+    @pytest.mark.usefixtures("ray_client_with_id_generator")
     def test_error_handling_missing_column(self, tmp_path: Path) -> None:
         """Test error handling when text column is missing."""
         # Create data without the expected column
@@ -230,7 +230,7 @@ class TestMinHashStage:
         with pytest.raises(KeyError):
             stage.process(input_task)
 
-    @pytest.mark.usefixtures("id_generator_actor")
+    @pytest.mark.usefixtures("ray_client_with_id_generator")
     def test_empty_input_handling(self, tmp_path: Path) -> None:
         """Test handling of empty input files."""
         # Create empty dataframe
@@ -268,7 +268,7 @@ class TestMinHashStage:
         with pytest.raises(RuntimeError, match="MinHash processor or ID generator not initialized"):
             stage.process(input_task)
 
-    @pytest.mark.usefixtures("id_generator_actor")
+    @pytest.mark.usefixtures("ray_client_with_id_generator")
     def test_large_text_handling(self, tmp_path: Path) -> None:
         """Test handling of large text documents."""
         # Create data with varying text sizes
@@ -309,7 +309,7 @@ class TestMinHashStage:
         sig_lengths = result_df["_minhash_signature"].list.len()
         assert (sig_lengths == 128).all()
 
-    @pytest.mark.usefixtures("id_generator_actor")
+    @pytest.mark.usefixtures("ray_client_with_id_generator")
     def test_special_characters_and_unicode(self, tmp_path: Path) -> None:
         """Test handling of special characters and unicode text."""
         # Create data with special characters and unicode
@@ -360,7 +360,7 @@ class TestMinHashStage:
                     f"Different texts at indices {i} and {j} should have different minhashes"
                 )
 
-    @pytest.mark.usefixtures("id_generator_actor")
+    @pytest.mark.usefixtures("ray_client_with_id_generator")
     def test_setup_idempotency(self, tmp_path: Path) -> None:
         """Test that calling setup multiple times doesn't cause issues and IDs continue from where they left off."""
         # Create first stage

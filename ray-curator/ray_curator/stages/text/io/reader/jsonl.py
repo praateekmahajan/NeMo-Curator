@@ -130,9 +130,9 @@ class JsonlReaderStage(ProcessingStage[FileGroupTask, DocumentBatch]):
         # Concatenate all dataframes
         df = pd.concat(dfs, ignore_index=True)
         if self._generate_ids:
-            return self.generate_ids_func(file_paths, df)
+            return self._generate_ids_func(file_paths, df)
         if self._assign_ids:
-            return self.assign_ids_func(file_paths, df)
+            return self._assign_ids_func(file_paths, df)
         return df
 
     def _assign_ids_func(self, filepath: str | list[str], df: pd.DataFrame) -> pd.DataFrame:
