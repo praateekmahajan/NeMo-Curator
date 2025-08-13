@@ -22,6 +22,7 @@ import pyarrow as pa
 import pyarrow.json as pj
 from loguru import logger
 
+from ray_curator.backends.base import WorkerMetadata
 from ray_curator.stages.base import CompositeStage, ProcessingStage
 from ray_curator.stages.file_partitioning import FilePartitioningStage
 from ray_curator.tasks import DocumentBatch, FileGroupTask, _EmptyTask
@@ -48,6 +49,19 @@ class JsonlReaderStage(ProcessingStage[FileGroupTask, DocumentBatch]):
 
     def outputs(self) -> tuple[list[str], list[str]]:
         return ["data"], self.columns or []
+
+    def setup(self, _: WorkerMetadata | None = None) -> None:
+        if self._generate_ids or self._assign_ids:
+            from ray_curator.stages.deduplication.id_generator import get_id_generator_actor
+
+            try:
+                self.id_generator = get_id_generator_actor()
+            except ValueError:
+                msg = (
+                    "ID generator is required when self._generate_ids or self._assign_ids is True, "
+                    "and the actor 'id_generator' does not exist. Please start the id_generator actor."
+                )
+                raise RuntimeError(msg) from None
 
     def process(self, task: FileGroupTask) -> DocumentBatch:
         """
@@ -139,41 +153,28 @@ class JsonlReaderStage(ProcessingStage[FileGroupTask, DocumentBatch]):
         import numpy as np
         import ray
 
-        from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR, get_id_generator_actor
+        from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
 
         if CURATOR_DEDUP_ID_STR not in df.columns:
             # Get the ID generator actor and retrieve the previously registered ID range
-            id_generator = get_id_generator_actor()
-            min_id, max_id = ray.get(id_generator.get_batch_range.remote(filepath, None))
+            min_id, max_id = ray.get(self.id_generator.get_batch_range.remote(filepath, None))
             df[CURATOR_DEDUP_ID_STR] = np.arange(min_id, max_id + 1)
-
+        else:
+            logger.warning(f"Column {CURATOR_DEDUP_ID_STR} already exists in {filepath}, not re-assigning IDs")
         return df
 
     def _generate_ids_func(self, filepath: str | list[str], df: pd.DataFrame) -> pd.DataFrame:
         import numpy as np
         import ray
 
-        from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR, get_id_generator_actor
+        from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
 
         if CURATOR_DEDUP_ID_STR not in df.columns:
-            # Only need the ID generator if _curator_id is missing
-            # Check if the actor with name "id_generator" exists
-            try:
-                id_generator = get_id_generator_actor()
-                msg = (
-                    "ID generator is required when _curator_id column is not present in the data, "
-                    "but self.id_generator is None. The actor 'id_generator' exists, but was not provided."
-                )
-            except ValueError:
-                msg = (
-                    "ID generator is required when _curator_id column is not present in the data, "
-                    "and the actor 'id_generator' does not exist. Please start the id_generator actor."
-                )
-                raise RuntimeError(msg) from None
-            else:
-                num_rows = len(df)
-                min_id = ray.get(id_generator.register_batch.remote(filepath, num_rows))
-                df[CURATOR_DEDUP_ID_STR] = np.arange(min_id, min_id + num_rows)
+            num_rows = len(df)
+            min_id = ray.get(self.id_generator.register_batch.remote(filepath, num_rows))
+            df[CURATOR_DEDUP_ID_STR] = np.arange(min_id, min_id + num_rows)
+        else:
+            logger.warning(f"Column {CURATOR_DEDUP_ID_STR} already exists in {filepath}, not generating new IDs")
         return df
 
     def _read_with_pyarrow(

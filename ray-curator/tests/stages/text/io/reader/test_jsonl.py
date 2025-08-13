@@ -65,6 +65,7 @@ class TestJsonlReaderWithIdGenerator:
     def test_sequential_id_generation_and_assignment(self, file_group_tasks: list[FileGroupTask]) -> None:
         """Test sequential ID generation across multiple batches."""
         generation_stage = JsonlReaderStage(_generate_ids=True)
+        generation_stage.setup()
 
         all_ids = []
         for task in file_group_tasks:
@@ -88,6 +89,7 @@ class TestJsonlReaderWithIdGenerator:
         """ If we now create a new stage with _assign_ids=True, the IDs should be the same as the previous batch."""
         all_ids = []
         assign_stage = JsonlReaderStage(_assign_ids=True)
+        assign_stage.setup()
         for i, task in enumerate(file_group_tasks):
             result = assign_stage.process(task)
             df = result.to_pandas()
@@ -99,9 +101,14 @@ class TestJsonlReaderWithIdGenerator:
 
         assert all_ids == list(range(6))
 
-    def test_generate_ids_no_actor_error(self, file_group_tasks: list[FileGroupTask]) -> None:
+    def test_generate_ids_no_actor_error(self) -> None:
         """Test error when actor doesn't exist and ID generation is requested."""
         stage = JsonlReaderStage(_generate_ids=True)
 
         with pytest.raises(RuntimeError, match="actor 'id_generator' does not exist"):
-            stage.process(file_group_tasks[0])
+            stage.setup()
+
+        stage = JsonlReaderStage(_assign_ids=True)
+
+        with pytest.raises(RuntimeError, match="actor 'id_generator' does not exist"):
+            stage.setup()
