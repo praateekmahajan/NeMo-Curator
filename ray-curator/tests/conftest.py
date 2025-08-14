@@ -32,7 +32,7 @@ def gpu_available() -> bool:
         if gpu_count > 0:
             logger.info(f"Detected {gpu_count} GPU(s) via pynvml")
             return True
-    except (ImportError, pynvml.NVMLError, OSError):
+    except Exception:  # noqa: BLE001,S110
         pass
 
     # Method 2: Try nvidia-smi with short timeout
