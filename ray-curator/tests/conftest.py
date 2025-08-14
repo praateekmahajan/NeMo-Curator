@@ -118,12 +118,9 @@ def shared_ray_cluster(tmp_path_factory: pytest.TempPathFactory, pytestconfig: p
     This fixture automatically determines whether GPU resources are needed
     based on the test session and configures Ray accordingly.
     """
-    # If RAY_ADDRESS is already set (e.g., in CI), use existing cluster
+    # If RAY_ADDRESS is already set (e.g., in CI), we unset it and still start a new Ray cluster
     if "RAY_ADDRESS" in os.environ:
-        existing_address = os.environ["RAY_ADDRESS"]
-        logger.info(f"Using existing Ray cluster at: {existing_address}")
-        yield existing_address
-        return
+        del os.environ["RAY_ADDRESS"]
 
     # Get collected items from config (set by pytest_collection_modifyitems)
     collected_items = getattr(pytestconfig, "_collected_items", [])
