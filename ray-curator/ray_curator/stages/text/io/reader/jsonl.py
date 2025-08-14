@@ -36,6 +36,18 @@ class JsonlReaderStage(ProcessingStage[FileGroupTask, DocumentBatch]):
     This stage accepts FileGroupTasks created by FilePartitioningStage
     and reads the actual file contents into DocumentBatches.
 
+    Args:
+        columns (list[str], optional): If specified, only read these columns. Defaults to None.
+        reader (str, optional): Reader to use ("pyarrow" or "pandas"). Defaults to "pandas".
+        reader_kwargs (dict[str, Any], optional): Keyword arguments for the reader. Defaults to {}.
+        _generate_ids (bool): Whether to generate monotonically increasing IDs across all files.
+            This uses IdGenerator actor, which needs to be instantiated before using this stage.
+            This can be slow, so it is recommended to use AddId stage instead, unless monotonically increasing IDs
+            are required.
+        _assign_ids (bool): Whether to assign monotonically increasing IDs from an IdGenerator.
+            This uses IdGenerator actor, which needs to be instantiated before using this stage.
+            This can be slow, so it is recommended to use AddId stage instead, unless monotonically increasing IDs
+            are required.
     """
 
     columns: list[str] | None = None  # If specified, only read these columns
@@ -44,6 +56,11 @@ class JsonlReaderStage(ProcessingStage[FileGroupTask, DocumentBatch]):
     _name: str = "jsonl_reader"
     _generate_ids: bool = False
     _assign_ids: bool = False
+
+    def __post_init__(self):
+        if self._generate_ids and self._assign_ids:
+            msg = "Cannot generate and assign IDs at the same time"
+            raise ValueError(msg)
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return [], []

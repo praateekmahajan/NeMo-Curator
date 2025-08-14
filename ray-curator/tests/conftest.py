@@ -22,29 +22,37 @@ def find_free_port() -> int:
 
 
 def gpu_available() -> bool:
-    """Check if GPU is available on the system."""
+    """Check if GPU is available on the system using multiple detection methods."""
+    # Method 1: Try pynvml (fastest and most reliable)
     try:
-        # Use full path to nvidia-smi for security
+        import pynvml
+
+        pynvml.nvmlInit()
+        gpu_count = pynvml.nvmlDeviceGetCount()
+        if gpu_count > 0:
+            logger.info(f"Detected {gpu_count} GPU(s) via pynvml")
+            return True
+    except (ImportError, pynvml.NVMLError, OSError):
+        pass
+
+    # Method 2: Try nvidia-smi with short timeout
+    try:
         result = subprocess.run(  # noqa: S603
-            ["nvidia-smi", "-L"],  # noqa: S607
+            ["nvidia-smi", "--query-gpu=count", "--format=csv,noheader,nounits"],  # noqa: S607
             capture_output=True,
             text=True,
+            timeout=2,
             check=False,
-            timeout=10,  # Add timeout for safety
         )
-        if result.returncode == 0 and "GPU" in result.stdout:
-            gpu_count = result.stdout.count("GPU")
-            logger.info(f"Detected {gpu_count} GPU(s) on system")
-            return True
-        else:
-            logger.info("nvidia-smi command succeeded but no GPUs found")
-            return False
-    except FileNotFoundError:
-        logger.info("nvidia-smi not found - no NVIDIA GPU drivers installed")
-        return False
-    except (subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
-        logger.info(f"Error running nvidia-smi: {e}")
-        return False
+        if result.returncode == 0 and result.stdout.strip().isdigit():
+            gpu_count = int(result.stdout.strip())
+            logger.info(f"Detected {gpu_count} GPU(s) via nvidia-smi")
+            return gpu_count > 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+        pass
+
+    logger.warning("No GPU detected")
+    return False
 
 
 def session_needs_gpu(config: pytest.Config, collected_items: list[pytest.Item]) -> bool:
@@ -55,11 +63,6 @@ def session_needs_gpu(config: pytest.Config, collected_items: list[pytest.Item])
     2. If we're in a GPU test environment (CUDA_VISIBLE_DEVICES set)
     3. If any collected test has the gpu marker
     """
-    # Check environment variables that indicate GPU testing
-    if "CUDA_VISIBLE_DEVICES" in os.environ:
-        logger.info("CUDA_VISIBLE_DEVICES detected, enabling GPU cluster")
-        return True
-
     # Check if running with -m gpu marker
     gpu_marker = config.getoption("-m", default="")
     if gpu_marker:
@@ -71,13 +74,7 @@ def session_needs_gpu(config: pytest.Config, collected_items: list[pytest.Item])
             return True
 
     # Check if any collected test has gpu marker
-    for item in collected_items:
-        if item.get_closest_marker("gpu"):
-            test_name = getattr(item, "nodeid", str(item))
-            logger.info(f"Found GPU test: {test_name}, enabling GPU cluster")
-            return True
-
-    return False
+    return any(item.get_closest_marker("gpu") for item in collected_items)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

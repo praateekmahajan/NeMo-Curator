@@ -88,6 +88,12 @@ def kill_id_generator_actor() -> None:
 
 
 def create_id_generator_actor(filepath: str | None = None) -> None:
+    """Create an id generator actor.
+
+    Args:
+        filepath (str): Path from where we want to load the id generator state json file.
+            If None, a new actor is created.
+    """
     register_loguru_serializer()  # TODO: instead of calling before each ray.init we can call it a packages __init__
     ray.init(ignore_reinit_error=True)
 
