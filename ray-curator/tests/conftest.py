@@ -23,7 +23,7 @@ def find_free_port() -> int:
 
 def gpu_available() -> bool:
     """Check if GPU is available on the system using multiple detection methods."""
-    # Method 1: Try pynvml (fastest and most reliable)
+    # Method 1: Try pynvml
     try:
         import pynvml
 
