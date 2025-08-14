@@ -23,7 +23,7 @@ import pyarrow.json as pj
 from loguru import logger
 
 from ray_curator.backends.base import WorkerMetadata
-from ray_curator.backends.experimental.ray_data.utils import RayStageSpecKeys
+from ray_curator.backends.experimental.utils import RayStageSpecKeys
 from ray_curator.stages.base import CompositeStage, ProcessingStage
 from ray_curator.stages.file_partitioning import FilePartitioningStage
 from ray_curator.tasks import DocumentBatch, FileGroupTask, _EmptyTask
