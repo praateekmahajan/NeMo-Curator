@@ -51,7 +51,7 @@ def _write_parquet_file(file_path: Path, file_data: list[dict[str, Any]]) -> Non
 def create_test_files(
     input_dir: Path,
     file_format: Literal["jsonl"] = "jsonl",  # Can extend to include "parquet" in future
-    num_files: int = 3,
+    num_files: int = 100,
     records_per_file: int = 2,
 ) -> pd.DataFrame:
     """Create test files in the specified format and return the expected combined DataFrame.
@@ -166,7 +166,7 @@ class TestReaderIntegrationWithoutIdGenerator:
         # Create test data
         tmp_path = tmp_path_factory.mktemp(f"reader_test_no_ids_{file_format}")
         self.input_dir = tmp_path / "input"
-        self.expected_df = create_test_files(self.input_dir, file_format=file_format, num_files=3, records_per_file=2)
+        self.expected_df = create_test_files(self.input_dir, file_format=file_format)
 
         # Create and run pipeline
         pipeline = create_reader_pipeline(
@@ -251,7 +251,7 @@ class TestReaderIntegrationWithIdGenerator:
         # Create test data
         tmp_path = tmp_path_factory.mktemp(f"reader_test_with_ids_{file_format}")
         self.input_dir = tmp_path / "input"
-        self.expected_df = create_test_files(self.input_dir, file_format=file_format, num_files=3, records_per_file=2)
+        self.expected_df = create_test_files(self.input_dir, file_format=file_format)
 
         # Create ID generator actor
         create_id_generator_actor()

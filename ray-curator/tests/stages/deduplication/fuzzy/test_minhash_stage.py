@@ -1,7 +1,6 @@
 """Test suite for MinHashStage."""
 
 # ruff: noqa: E402
-import contextlib
 import os
 from pathlib import Path
 
@@ -11,25 +10,8 @@ import pytest
 cudf = pytest.importorskip("cudf", reason="MinHashStage tests require cudf")
 
 from ray_curator.stages.deduplication.fuzzy.minhash import MinHashStage
-from ray_curator.stages.deduplication.id_generator import (
-    CURATOR_DEDUP_ID_STR,
-    create_id_generator_actor,
-    kill_id_generator_actor,
-)
+from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
 from ray_curator.tasks import FileGroupTask
-
-
-@pytest.fixture
-def ray_client_with_id_generator(shared_ray_client: None) -> None:  # noqa: ARG001
-    """Create and manage ID generator actor for each test."""
-    # Create the ID generator actor
-    create_id_generator_actor()
-
-    yield
-
-    # Cleanup after test completes
-    with contextlib.suppress(Exception):
-        kill_id_generator_actor()
 
 
 @pytest.fixture

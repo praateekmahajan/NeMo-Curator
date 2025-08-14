@@ -1,57 +1,101 @@
-"""Shared test configuration for Ray Curator tests.
+"""Unified test configuration for Ray Curator tests.
 
-This module provides shared Ray cluster setup and teardown for all test modules.
-Using a single Ray instance across tests improves performance while maintaining
-proper isolation through Ray's actor/task lifecycle management.
+This module provides smart Ray cluster setup that automatically configures
+GPU resources based on the test session's requirements.
 """
 
 import os
+import socket
 import subprocess
+from typing import Any
 
 import pytest
 import ray
 from loguru import logger
 
 
-def find_free_port():
-    import socket
-
+def find_free_port() -> int:
+    """Find an available port on the system."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))
         return s.getsockname()[1]
 
 
-@pytest.fixture(scope="session", autouse=True)
-def shared_ray_cluster(tmp_path_factory: pytest.TempPathFactory):
-    """Set up a shared Ray cluster for all tests in the session.
+def gpu_available() -> bool:
+    """Check if GPU is available on the system."""
+    try:
+        # Use full path to nvidia-smi for security
+        result = subprocess.run(  # noqa: S603
+            ["nvidia-smi", "-L"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,  # Add timeout for safety
+        )
+        if result.returncode == 0 and "GPU" in result.stdout:
+            gpu_count = result.stdout.count("GPU")
+            logger.info(f"Detected {gpu_count} GPU(s) on system")
+            return True
+        else:
+            logger.info("nvidia-smi command succeeded but no GPUs found")
+            return False
+    except FileNotFoundError:
+        logger.info("nvidia-smi not found - no NVIDIA GPU drivers installed")
+        return False
+    except (subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
+        logger.info(f"Error running nvidia-smi: {e}")
+        return False
 
-    This fixture automatically sets up Ray at the beginning of the test session
-    and tears it down at the end. It configures Ray with fixed resources for
-    consistent testing behavior.
+
+def session_needs_gpu(config: pytest.Config, collected_items: list[pytest.Item]) -> bool:
+    """Determine if the current test session needs GPU resources.
+
+    This checks:
+    1. If GPU tests are explicitly being run (via -m gpu)
+    2. If we're in a GPU test environment (CUDA_VISIBLE_DEVICES set)
+    3. If any collected test has the gpu marker
     """
+    # Check environment variables that indicate GPU testing
+    if "CUDA_VISIBLE_DEVICES" in os.environ:
+        logger.info("CUDA_VISIBLE_DEVICES detected, enabling GPU cluster")
+        return True
 
-    ONE_GB = 1024**3  # noqa: N806
+    # Check if running with -m gpu marker
+    gpu_marker = config.getoption("-m", default="")
+    if gpu_marker:
+        if "not gpu" in gpu_marker:
+            logger.info("'not gpu' marker detected, disabling GPU cluster")
+            return False
+        elif "gpu" in gpu_marker:
+            logger.info("GPU marker detected in test selection, enabling GPU cluster")
+            return True
 
-    # This ensures we are not reusing an existing cluster but starting a new one
-    if "RAY_ADDRESS" in os.environ:
-        del os.environ["RAY_ADDRESS"]
+    # Check if any collected test has gpu marker
+    for item in collected_items:
+        if item.get_closest_marker("gpu"):
+            test_name = getattr(item, "nodeid", str(item))
+            logger.info(f"Found GPU test: {test_name}, enabling GPU cluster")
+            return True
 
-    # Create a temporary directory for Ray to avoid conflicts with other instances
-    temp_dir = tmp_path_factory.mktemp("ray")
+    return False
 
-    # TODO: Create a cluster with 11 cpus instead of one head node with 11 cpus
-    # If we have 6-7 stages all needing 1 cpu, then we atleast need 10 cpus for Xenna / Ray Data to work
-    # The 11th CPU is for StageCallCounter
 
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Hook to store collected items in config for later use."""
+    config._collected_items = items  # Store in config instead of global
+
+
+def _build_ray_command(temp_dir: str, num_cpus: int, num_gpus: int, object_store_memory: int) -> tuple[list[str], int]:
+    """Build the Ray start command with the given configuration."""
     ray_port = find_free_port()
     dashboard_port = find_free_port()
     ray_client_server_port = find_free_port()
 
-    # TODO: See if we can use get_client in the future
-    cmd_to_run = [
+    return [
         "ray",
         "start",
         "--head",
+        "--disable-usage-stats",
         "--port",
         str(ray_port),
         "--dashboard-port",
@@ -61,58 +105,123 @@ def shared_ray_cluster(tmp_path_factory: pytest.TempPathFactory):
         "--temp-dir",
         str(temp_dir),
         "--num-cpus",
-        "11",
+        str(num_cpus),
         "--num-gpus",
-        "0",
+        str(num_gpus),
         "--object-store-memory",
-        str(2 * ONE_GB),
+        str(object_store_memory),
         "--block",
-    ]
+    ], ray_port
 
-    for k, v in os.environ.items():
-        if k.startswith("RAY_"):
-            logger.info(f"{k}: {v}")
 
-    # Start Ray cluster without --block so it doesn't hang
+@pytest.fixture(scope="session", autouse=True)
+def shared_ray_cluster(tmp_path_factory: pytest.TempPathFactory, pytestconfig: pytest.Config) -> str:
+    """Set up a shared Ray cluster with dynamic GPU configuration.
+
+    This fixture automatically determines whether GPU resources are needed
+    based on the test session and configures Ray accordingly.
+    """
+    # If RAY_ADDRESS is already set (e.g., in CI), use existing cluster
+    if "RAY_ADDRESS" in os.environ:
+        existing_address = os.environ["RAY_ADDRESS"]
+        logger.info(f"Using existing Ray cluster at: {existing_address}")
+        yield existing_address
+        return
+
+    # Get collected items from config (set by pytest_collection_modifyitems)
+    collected_items = getattr(pytestconfig, "_collected_items", [])
+
+    # Determine if we need GPU resources
+    needs_gpu = session_needs_gpu(pytestconfig, collected_items)
+    gpu_available_on_system = gpu_available()
+
+    # Configure GPU resources with strict checking
+    if needs_gpu and not gpu_available_on_system:
+        error_msg = (
+            "GPU tests detected but no GPU available on system. "
+            "Either install GPU drivers/hardware or run CPU-only tests with '-m \"not gpu\"'"
+        )
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+    # Set up Ray configuration values
+    num_cpus = 11
+    num_gpus = 2 if needs_gpu else 0
+    object_store_memory = 2 * (1024**3)  # 2 GB
+
+    logger.info(f"Configuring Ray cluster with {'GPU' if needs_gpu else 'CPU-only'} support")
+
+    # Create a temporary directory for Ray to avoid conflicts with other instances
+    temp_dir = tmp_path_factory.mktemp("ray")
+
+    # Build and execute Ray command
+    cmd_to_run, ray_port = _build_ray_command(str(temp_dir), num_cpus, num_gpus, object_store_memory)
+
+    logger.info(f"Starting Ray cluster with {num_gpus} GPUs")
     logger.info(f"Running Ray command: {' '.join(cmd_to_run)}")
-    ray_process = subprocess.Popen(  # noqa: S603
-        cmd_to_run,
-    )
-    logger.info(f"Ran Ray process: {ray_process.pid}")
-    ray_address = f"localhost:{ray_port}"
 
-    # Set RAY_ADDRESS so Xenna will connect to our cluster
+    # Use explicit path to ray command for security
+    ray_process = subprocess.Popen(cmd_to_run, shell=False)  # noqa: S603
+    logger.info(f"Started Ray process: {ray_process.pid}")
+
+    ray_address = f"localhost:{ray_port}"
     os.environ["RAY_ADDRESS"] = ray_address
     logger.info(f"Set RAY_ADDRESS for tests to: {ray_address}")
 
-    yield ray_address
-
-    # Shutdown Ray after all tests complete
-    logger.info("Shutting down Ray cluster")
-    ray_process.kill()
+    try:
+        yield ray_address
+    finally:
+        # Ensure cleanup happens even if tests fail
+        logger.info("Shutting down Ray cluster")
+        ray_process.kill()
+        ray_process.wait()  # Wait for process to actually terminate
 
 
 @pytest.fixture
 def shared_ray_client(shared_ray_cluster: str) -> None:
-    """Initialize Ray client for tests that need Ray API access.
-
-    This fixture should be used by tests that need to call Ray functions
-    like ray.nodes(), ray.available_resources(), etc. Tests that don't
-    need direct Ray API access (like integration tests) should not use
-    this fixture.
-
-    Args:
-        shared_ray_cluster: The Ray cluster address from shared_ray_cluster fixture
-    """
+    """Initialize Ray client for tests that need Ray API access."""
     ray.init(
         address=shared_ray_cluster,
         ignore_reinit_error=True,
         log_to_driver=True,
-        local_mode=False,  # Use cluster mode for better testing of distributed features
+        local_mode=False,
     )
 
-    yield
+    try:
+        yield
+    finally:
+        logger.info("Shutting down Ray client")
+        ray.shutdown()
 
-    # Shutdown Ray client after test completes
-    logger.info("Shutting down Ray client")
-    ray.shutdown()
+
+@pytest.fixture
+def ray_gpu_resources() -> dict[str, Any]:
+    """Provide information about available GPU resources in the Ray cluster."""
+    try:
+        resources = ray.available_resources()
+        return {
+            "gpu_count": resources.get("GPU", 0),
+            "has_gpu": resources.get("GPU", 0) > 0,
+            "total_resources": resources,
+        }
+    except (RuntimeError, ConnectionError) as e:
+        logger.warning(f"Could not get Ray resources: {e}")
+        return {"gpu_count": 0, "has_gpu": False, "total_resources": {}}
+
+
+@pytest.fixture
+def ray_client_with_id_generator(shared_ray_client: None) -> None:  # noqa: ARG001
+    """Create and manage ID generator actor for each test."""
+    from ray_curator.stages.deduplication.id_generator import (
+        create_id_generator_actor,
+        kill_id_generator_actor,
+    )
+
+    # Create the ID generator actor
+    create_id_generator_actor()
+
+    try:
+        yield
+    finally:
+        # Cleanup after test completes
+        kill_id_generator_actor()

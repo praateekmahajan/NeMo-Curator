@@ -1,6 +1,5 @@
 """Simple tests for JsonlReaderStage ID generation functionality."""
 
-import contextlib
 from pathlib import Path
 
 import pandas as pd
@@ -8,20 +7,9 @@ import pytest
 
 from ray_curator.stages.deduplication.id_generator import (
     CURATOR_DEDUP_ID_STR,
-    create_id_generator_actor,
-    kill_id_generator_actor,
 )
 from ray_curator.stages.text.io.reader.jsonl import JsonlReaderStage
 from ray_curator.tasks import FileGroupTask
-
-
-@pytest.fixture
-def ray_client_with_id_generator(shared_ray_client: None) -> None:  # noqa: ARG001
-    """Create and manage ID generator actor for each test."""
-    create_id_generator_actor()
-    yield
-    with contextlib.suppress(Exception):
-        kill_id_generator_actor()
 
 
 @pytest.fixture

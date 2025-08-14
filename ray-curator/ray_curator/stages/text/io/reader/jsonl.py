@@ -23,6 +23,7 @@ import pyarrow.json as pj
 from loguru import logger
 
 from ray_curator.backends.base import WorkerMetadata
+from ray_curator.backends.experimental.ray_data.utils import RayStageSpecKeys
 from ray_curator.stages.base import CompositeStage, ProcessingStage
 from ray_curator.stages.file_partitioning import FilePartitioningStage
 from ray_curator.tasks import DocumentBatch, FileGroupTask, _EmptyTask
@@ -219,6 +220,10 @@ class JsonlReaderStage(ProcessingStage[FileGroupTask, DocumentBatch]):
 
         # Concatenate all tables
         return pa.concat_tables(tables)
+
+    def ray_stage_spec(self) -> None:
+        # Explicitly set this to false, otherwise due to the setup method, the stage will be treated as an actor stage
+        return {RayStageSpecKeys.IS_ACTOR_STAGE: False}
 
 
 @dataclass

@@ -206,10 +206,8 @@ class TestIdGeneratorBase:
 class TestIdGeneratorActor:
     """Test the IdGenerator as a Ray actor."""
 
+    @pytest.mark.usefixtures("ray_client_with_id_generator")
     def test_actor_lifecycle(self, tmp_path: Path, reuse_actor: bool = False):
-        # We create a new actor
-        create_id_generator_actor()
-
         # We start a new ray context and interact with the actor
         with ray.init(ignore_reinit_error=True):
             actor = get_id_generator_actor()
