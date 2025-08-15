@@ -44,6 +44,7 @@ def test_get_array_from_df() -> None:
     cp.testing.assert_allclose(result, expected_array, rtol=1e-5, atol=1e-5)
 
 
+@pytest.mark.gpu  # TODO : Remove this once we figure out how to import semantic on CPU
 class TestBreakParquetPartitionIntoGroups:
     @patch("pyarrow.parquet.read_metadata", return_value=Mock(num_rows=10_000))
     @patch("fsspec.parquet.open_parquet_file")
