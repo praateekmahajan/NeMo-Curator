@@ -33,6 +33,12 @@ class RayActorPoolRAFTAdapter(BaseStageAdapter):
         # Initialize the base stage adapter first
         super().__init__(stage)
 
+        # Debug: Print what Ray set for CUDA_VISIBLE_DEVICES
+        import os
+
+        cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "NOT_SET")
+        logger.debug(f"Actor {index}: CUDA_VISIBLE_DEVICES = {cuda_devices}")
+
         # Get runtime context for worker metadata (copied from RayActorPoolStageAdapter)
         node_info, worker_metadata = get_worker_metadata_and_node_id()
 
@@ -82,7 +88,8 @@ class RayActorPoolRAFTAdapter(BaseStageAdapter):
         """
         if self._is_root:
             actor_handles = [
-                ray.get_actor(name=f"{self._actor_name_prefix}-{i}", namespace=None) for i in range(1, self._pool_size)
+                ray.get_actor(name=f"{self._actor_name_prefix}Actor-{i}", namespace=None)
+                for i in range(1, self._pool_size)
             ]
             futures = [actor.set_root_unique_id.remote(self.root_unique_id) for actor in actor_handles]
 

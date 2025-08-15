@@ -73,3 +73,12 @@ class Comms:
 
         if self.verbose:
             logger.debug("Initialization complete.")
+
+    def destroy(self) -> None:
+        """
+        Destroys the underlying comms and cleans up NCCL resources.
+        """
+        if self.nccl_initialized:
+            self.nccl_initialized = False
+            if self.verbose:
+                logger.debug("Comms destroyed.")
