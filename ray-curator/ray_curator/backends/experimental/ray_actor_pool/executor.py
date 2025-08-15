@@ -199,38 +199,11 @@ class RayActorPoolExecutor(BaseExecutor):
             task_batches.append(batch)
         # Process each task and flatten the results since each task can produce multiple output tasks
         all_results = []
-
-        # For RAFT stages, use synchronous execution to ensure all actors start together
-        if _stage.ray_stage_spec().get(RayStageSpecKeys.IS_RAFT_ACTOR, False):
-            logger.info(f"Using synchronous execution for RAFT stage: {_stage.name}")
-            # Get all actors from the pool
-            actors = list(actor_pool._idle_actors)
-
-            # For RAFT stages, we need exactly one task batch per actor
-            if len(task_batches) != len(actors):
-                msg = f"RAFT stage {_stage.name} requires exactly {len(actors)} task batches, but got {len(task_batches)}. Each actor must have exactly one batch of tasks."
-                raise ValueError(msg)
-
-            # Distribute task batches to actors (one-to-one mapping)
-            actor_tasks = list(zip(actors, task_batches, strict=False))
-
-            # Start all actors simultaneously (like the NVIDIA example)
-            futures = [actor.process_batch.remote(batch) for actor, batch in actor_tasks]
-
-            # Wait for all to complete
-            results = ray.get(futures)
-
-            # Flatten results
-            for result_batch in results:
-                if result_batch:  # Skip empty results
-                    all_results.extend(result_batch)
-        else:
-            # Use map_unordered for non-RAFT stages
-            for result_batch in actor_pool.map_unordered(
-                lambda actor, batch: actor.process_batch.remote(batch), task_batches
-            ):
-                # result_batch is a list of tasks from processing a single input task
-                all_results.extend(result_batch)
+        for result_batch in actor_pool.map_unordered(
+            lambda actor, batch: actor.process_batch.remote(batch), task_batches
+        ):
+            # result_batch is a list of tasks from processing a single input task
+            all_results.extend(result_batch)
 
         return all_results
 

@@ -7,11 +7,11 @@ from ray_curator.backends.base import WorkerMetadata
 from ray_curator.stages.base import CompositeStage, ProcessingStage
 from ray_curator.stages.deduplication.id_generator import CURATOR_ID_GENERATOR_ACTOR_NAME, IdGenerator
 from ray_curator.stages.deduplication.io_utils import DeduplicationIO
+from ray_curator.stages.file_partitioning import FilePartitioningStage
 from ray_curator.stages.resources import Resources
 from ray_curator.tasks import FileGroupTask, _EmptyTask
 
-from .io import CudfLimitAwareFilePartitioningStage
-from .utils import get_array_from_df
+from .utils import break_parquet_partition_into_groups, get_array_from_df
 
 if TYPE_CHECKING:
     import cudf
@@ -33,6 +33,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
         output_path: str,
         n_clusters: int,
         distance_metric_to_use: Literal["l2", "cosine"] | None = "cosine",
+        embedding_dim: int | None = None,
         verbose: bool = False,
         max_iter: int = 300,
         tol: float = 1e-4,
@@ -76,6 +77,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
         else:
             msg = "Distance metric must be either 'l2' or 'cosine'"
             raise ValueError(msg)
+        self.embedding_dim = embedding_dim
         self.verbose = verbose
         self.max_iter = max_iter
         self.tol = tol
@@ -124,13 +126,16 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
         # Collect all data from all tasks
         all_dfs = []
         task_df_mapping = []  # Track which DataFrames belong to which task
+        # concatenate all tasks into a single dataframe
+        all_files = [file for task in tasks for file in task.data]
+        groups = break_parquet_partition_into_groups(all_files, embedding_dim=self.embedding_dim)
 
         filetype = tasks[0]._metadata.get("filetype", "parquet")
-        for task in tasks:
+        for group in groups:
             # Read all files in this task at once (task.data is a list of file paths)
             if filetype == "parquet":
                 df = self.read_parquet(
-                    task.data,  # Pass the whole list of file paths
+                    group,  # Pass the whole list of file paths
                     columns=[self.id_field, self.embedding_field],
                     storage_options=self.input_storage_options,
                     assign_id=False,
@@ -138,7 +143,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
                 )
             elif filetype == "jsonl":
                 df = self.read_jsonl(
-                    task.data,  # Pass the whole list of file paths
+                    group,  # Pass the whole list of file paths
                     columns=[self.id_field, self.embedding_field],
                     storage_options=self.input_storage_options,
                     assign_id=False,
@@ -327,7 +332,7 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
 
     def decompose(self) -> list[ProcessingStage]:
         return [
-            CudfLimitAwareFilePartitioningStage(
+            FilePartitioningStage(
                 file_paths=self.input_path,
                 filetype=self.input_filetype,
                 embedding_dim=self.embedding_dim,

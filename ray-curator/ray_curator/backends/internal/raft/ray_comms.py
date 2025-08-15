@@ -58,7 +58,7 @@ class Comms:
 
     def __del__(self) -> None:
         if self.nccl_initialized:
-            self.destroy()
+            self.nccl_initialized = False
 
     def create_nccl_uniqueid(self) -> None:
         self.uniqueId = nccl.get_unique_id()
@@ -73,12 +73,3 @@ class Comms:
 
         if self.verbose:
             logger.debug("Initialization complete.")
-
-    def destroy(self) -> None:
-        """
-        Destroys the underlying comms and cleans up NCCL resources.
-        """
-        if self.nccl_initialized:
-            self.nccl_initialized = False
-            if self.verbose:
-                logger.debug("Comms destroyed.")

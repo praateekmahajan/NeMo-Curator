@@ -33,12 +33,6 @@ class RayActorPoolRAFTAdapter(BaseStageAdapter):
         # Initialize the base stage adapter first
         super().__init__(stage)
 
-        # Debug: Print what Ray set for CUDA_VISIBLE_DEVICES
-        import os
-
-        cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "NOT_SET")
-        logger.debug(f"Actor {index}: CUDA_VISIBLE_DEVICES = {cuda_devices}")
-
         # Get runtime context for worker metadata (copied from RayActorPoolStageAdapter)
         node_info, worker_metadata = get_worker_metadata_and_node_id()
 
