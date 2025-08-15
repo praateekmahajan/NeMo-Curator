@@ -1,8 +1,14 @@
+# ruff: noqa: E402
 from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 import pytest
+
+cudf = pytest.importorskip("cudf")
+cupy = pytest.importorskip("cupy")
+
+import cupy as cp
 import torch
 
 from ray_curator.stages.deduplication.semantic.pairwise import (
@@ -13,12 +19,6 @@ from ray_curator.stages.deduplication.semantic.pairwise import (
 from ray_curator.stages.deduplication.semantic.pairwise_io import ClusterWiseFilePartitioningStage
 from ray_curator.stages.deduplication.semantic.ranking import RankingStrategy
 from ray_curator.tasks import FileGroupTask
-
-cudf = pytest.importorskip("cudf")
-cupy = pytest.importorskip("cupy")
-
-
-import cupy as cp  # noqa: E402
 
 
 @pytest.mark.gpu

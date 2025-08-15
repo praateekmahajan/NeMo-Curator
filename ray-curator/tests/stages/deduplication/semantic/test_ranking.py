@@ -1,8 +1,9 @@
+# ruff: noqa: E402
 import pytest
 
 cudf = pytest.importorskip("cudf")
 
-from ray_curator.stages.deduplication.semantic.ranking import RankingStrategy  # noqa: E402
+from ray_curator.stages.deduplication.semantic.ranking import RankingStrategy
 
 
 @pytest.mark.gpu
@@ -23,7 +24,7 @@ class TestRankingStrategy:
         )
 
         # Apply ranking
-        ranked_df = strategy.rank_cluster(test_data, "id")
+        ranked_df = strategy.rank_cluster(test_data)
 
         # Should be sorted by cosine_dist_to_cent descending, then id ascending
         expected_order = [2, 4, 3, 1]  # IDs in order of descending distance
@@ -40,7 +41,7 @@ class TestRankingStrategy:
             ascending=True,  # closest first (ascending)
         )
 
-        ranked_df = strategy.rank_cluster(test_data, "id")
+        ranked_df = strategy.rank_cluster(test_data)
 
         # Should be sorted by cosine_dist_to_cent ascending, then id ascending
         expected_order = [1, 3, 4, 2]  # IDs in order of ascending distance
@@ -57,12 +58,12 @@ class TestRankingStrategy:
 
         strategy = RankingStrategy.random(random_seed=42)
 
-        ranked_df = strategy.rank_cluster(test_data, "id")
+        ranked_df = strategy.rank_cluster(test_data)
 
         # Should have all the same IDs but in different order
         assert set(ranked_df["id"].to_arrow().to_pylist()) == {1, 2, 3, 4}
         # With fixed seed, should be deterministic
-        ranked_df2 = strategy.rank_cluster(test_data, "id")
+        ranked_df2 = strategy.rank_cluster(test_data)
         assert ranked_df["id"].to_arrow().to_pylist() == ranked_df2["id"].to_arrow().to_pylist()
 
     def test_metadata_based_ranking(self) -> None:
@@ -75,7 +76,7 @@ class TestRankingStrategy:
             ascending=[True, False],  # priority ascending, score descending
         )
 
-        ranked_df = strategy.rank_cluster(test_data, "id")
+        ranked_df = strategy.rank_cluster(test_data)
 
         # Expected order: priority=1 (ids 2,4) with score desc -> id 4, id 2
         #                 priority=2 (id 1) -> id 1
@@ -90,7 +91,7 @@ class TestRankingStrategy:
         # Custom strategy: sort by custom_metric descending
         strategy = RankingStrategy(metadata_cols=["custom_metric"], ascending=False)
 
-        ranked_df = strategy.rank_cluster(test_data, "id")
+        ranked_df = strategy.rank_cluster(test_data)
 
         expected_order = [3, 1, 2]  # 20, 10, 5 in descending order
         assert ranked_df["id"].to_arrow().to_pylist() == expected_order
@@ -102,7 +103,7 @@ class TestRankingStrategy:
         strategy = RankingStrategy(metadata_cols=["missing_col"], ascending=True)
 
         with pytest.raises(ValueError, match="Required columns.*not found"):
-            strategy.rank_cluster(test_data, "id")
+            strategy.rank_cluster(test_data)
 
     def test_invalid_strategy_error(self) -> None:
         """Test error with invalid strategy."""
@@ -111,7 +112,7 @@ class TestRankingStrategy:
         strategy = RankingStrategy(metadata_cols=["col"], strategy="invalid")
 
         with pytest.raises(ValueError, match="Invalid strategy"):
-            strategy.rank_cluster(test_data, "id")
+            strategy.rank_cluster(test_data)
 
     def test_mismatched_ascending_length(self) -> None:
         """Test error when ascending list length doesn't match metadata_cols."""

@@ -1,19 +1,19 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pandas as pd
 import pytest
 
-cudf = pytest.importorskip("cudf")
-cp = pytest.importorskip("cupy")
-
-from ray_curator.stages.deduplication.semantic.utils import (  # noqa: E402
-    break_parquet_partition_into_groups,
-    get_array_from_df,
-)
+from ray_curator.stages.deduplication.semantic.utils import break_parquet_partition_into_groups
 
 
 @pytest.mark.gpu
 def test_get_array_from_df() -> None:
+    import cudf
+    import cupy as cp
+
+    from ray_curator.stages.deduplication.semantic.utils import get_array_from_df
+
     """Test that get_array_from_df works correctly."""
     df = cudf.DataFrame(
         {
@@ -69,7 +69,7 @@ class TestBreakParquetPartitionIntoGroups:
         for i in range(5):
             file_path = tmp_path / f"test_file_{i}.parquet"
             # Create a small test dataframe and save as parquet
-            df = cudf.DataFrame(
+            df = pd.DataFrame(
                 {
                     "id": list(range(i * 10, (i + 1) * 10)),
                     "embedding": [[1.0, 2.0, 3.0]] * 10,
@@ -97,7 +97,7 @@ class TestBreakParquetPartitionIntoGroups:
         # Each file contains: 1000 rows * 2000 dimensions = 2,000,000 elements
         for i in range(num_files):
             file_path = tmp_path / f"large_test_file_{i}.parquet"
-            df = cudf.DataFrame(
+            df = pd.DataFrame(
                 {
                     "id": list(range(i * num_rows, (i + 1) * num_rows)),
                     "embedding": [[1.0] * 2000] * num_rows,  # 2000-dim embeddings
