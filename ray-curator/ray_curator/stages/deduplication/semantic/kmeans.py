@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+import cupy as cp
 import numpy as np
 
 from ray_curator.backends.base import WorkerMetadata
@@ -15,8 +16,10 @@ from .utils import break_parquet_partition_into_groups, get_array_from_df
 
 if TYPE_CHECKING:
     import cudf
-    import cupy as cp
 
+import time
+
+from loguru import logger
 
 # Column names
 L2_DIST_TO_CENT_COL = "l2_dist_to_cent"
@@ -31,6 +34,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
         id_field: str,
         embedding_field: str,
         output_path: str,
+        # KMeans args
         n_clusters: int,
         distance_metric_to_use: Literal["l2", "cosine"] | None = "cosine",
         embedding_dim: int | None = None,
@@ -42,6 +46,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
         n_init: int | Literal["auto"] = 1,
         oversampling_factor: float = 2.0,
         max_samples_per_batch: int = 1 << 15,
+        # I/O args
         read_kwargs: dict[dict] | None = None,
         write_kwargs: dict[dict] | None = None,
     ):
@@ -113,29 +118,39 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
 
         This method:
         1. Reads data from this actor's assigned tasks
-        2. Concatenates embeddings from assigned tasks
+        2. Breaks data into subgroups to avoid cudf row limits
         3. Fits distributed KMeans model (coordinates with other actors via RAFT)
-        4. Assigns cluster centroids back to this actor's data
-        5. Writes the results for assigned tasks
+        4. Assigns cluster centroids back to each subgroup
+        5. Writes the results for each subgroup
         """
-        import cupy as cp
 
         if not tasks:
             return []
 
-        # Collect all data from all tasks
-        all_dfs = []
-        task_df_mapping = []  # Track which DataFrames belong to which task
-        # concatenate all tasks into a single dataframe
+        # Collect all files from all tasks
         all_files = [file for task in tasks for file in task.data]
-        groups = break_parquet_partition_into_groups(all_files, embedding_dim=self.embedding_dim)
+        filetype = all_files[0].split(".")[-1]  # This might fail in case filetype is not {jsonl, parquet}
+        # Break files into subgroups to avoid cudf row limits
+        if filetype in {"parquet"}:
+            groups = break_parquet_partition_into_groups(all_files, embedding_dim=self.embedding_dim)
+        elif filetype in {"jsonl"}:
+            # For JSONL files, just group all files together since we can't easily estimate size
+            groups = [all_files]
+        else:
+            msg = f"Unsupported filetype: {filetype}. Only jsonl and parquet are supported."
+            raise ValueError(msg)
 
-        filetype = tasks[0]._metadata.get("filetype", "parquet")
+        # Read each subgroup independently
+        t0 = time.perf_counter()
+        all_dfs, embeddings_arrays = [], []
+        start_indices = []
+        current_index = 0
+
         for group in groups:
-            # Read all files in this task at once (task.data is a list of file paths)
+            # Read all files in this group
             if filetype == "parquet":
                 df = self.read_parquet(
-                    group,  # Pass the whole list of file paths
+                    group,
                     columns=[self.id_field, self.embedding_field],
                     storage_options=self.input_storage_options,
                     assign_id=False,
@@ -143,7 +158,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
                 )
             elif filetype == "jsonl":
                 df = self.read_jsonl(
-                    group,  # Pass the whole list of file paths
+                    group,
                     columns=[self.id_field, self.embedding_field],
                     storage_options=self.input_storage_options,
                     assign_id=False,
@@ -155,62 +170,62 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
 
             # Normalize the embeddings
             df = self.normalize_embeddings_col_in_df(df, self.embedding_field)
+
+            # Convert embeddings to cupy array to avoid cudf row limits
+            embeddings_array = get_array_from_df(df, self.embedding_field)
+
+            # Maintain a list of DataFrames and embeddings arrays for later use
             all_dfs.append(df)
-            task_df_mapping.append(df)
+            embeddings_arrays.append(embeddings_array)
+            start_indices.append(current_index)
+            current_index += len(df)
 
-        # Concatenate ALL embeddings from ALL tasks to fit a single KMeans model
-        if all_dfs:
-            all_embeddings = cp.concatenate([get_array_from_df(df, self.embedding_field) for df in all_dfs], axis=0)
+        t1 = time.perf_counter()
+        logger.debug(f"Read time: {(t1 - t0):.2f} seconds")
 
-            # Fit KMeans on all data at once using distributed RAFT
-            from loguru import logger
+        # Fit the model cooperatively across actors, then predict on local data
+        concatenated_embeddings = cp.concatenate(embeddings_arrays, axis=0)
+        self.kmeans.fit(concatenated_embeddings, sample_weight=None)
+        labels = self.kmeans.predict(concatenated_embeddings).astype(cp.int32)
 
-            logger.debug(
-                f"About to call fit_predict with {len(all_embeddings)} embeddings on RAFT handle {self._raft_handle}"
-            )
+        t2 = time.perf_counter()
+        logger.info(f"KMeans fit+predict time: {(t2 - t1):.2f} seconds")
 
-            # In distributed RAFT KMeans, each actor calls fit_predict on their local data
-            # The RAFT communication handles the distributed training automatically
-            all_centroids = self.kmeans.fit_predict(all_embeddings, sample_weight=None).astype(cp.int32)
-            logger.debug(f"fit_predict completed successfully with {len(all_centroids)} centroids")
-
-            # Assign centroids back to DataFrames
-            current_row_idx = 0
-            for df in all_dfs:
-                df_len = len(df)
-                df["centroid"] = all_centroids[current_row_idx : current_row_idx + df_len]
-                current_row_idx += df_len
+        results = []
+        # Assign labels back to DataFrame and write results
+        for i, df in enumerate(all_dfs):
+            start_idx = start_indices[i]
+            end_idx = start_idx + len(df)
+            df["centroid"] = labels[start_idx:end_idx]
 
             # Assign distances using the fitted cluster centers
-            for i, df in enumerate(all_dfs):
-                all_dfs[i] = self._assign_distances(df, self.embedding_field, self.kmeans.cluster_centers_)
+            df = self._assign_distances(df, self.embedding_field, self.kmeans.cluster_centers_)  # noqa: PLW2901
 
-            del all_embeddings, all_centroids
-
-        # Write results for each task
-        results = []
-        for task_idx, task in enumerate(tasks):
-            # Write the DataFrame for this task (each task has one DataFrame now)
-            df = task_df_mapping[task_idx]
+            # Write results for this subgroup
+            output_filename = f"{tasks[0]._uuid}_{i}"
             self.write_parquet(
                 df,
                 self.output_path,
-                partition_file_name=f"{task.task_id}.parquet",
+                partition_file_name=f"{output_filename}.parquet",
                 partition_cols=["centroid"],
                 index=False,
                 storage_options=self.output_storage_options,
                 **self.write_kwargs,
             )
 
+            # Create result task for this subgroup
             results.append(
                 _EmptyTask(
-                    task_id=task.task_id,
-                    dataset_name=task.dataset_name,
-                    _metadata=task._metadata,
-                    _stage_perf=task._stage_perf,
+                    task_id=output_filename,
+                    dataset_name=f"kmeans_group_{i}",
+                    _metadata=None,
+                    _stage_perf=[],
                     data=None,
                 )
             )
+        t3 = time.perf_counter()
+        logger.info(f"Write time: {(t3 - t2):.2f} seconds")
+
         return results
 
     def setup(self, _: WorkerMetadata | None = None) -> None:
@@ -288,6 +303,7 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
     output_path: str
     verbose: bool = False
     embedding_dim: int | None = None
+    # I/O args
     input_filetype: Literal["jsonl", "parquet"] = "parquet"
     input_file_extensions: list[str] | None = None
     read_kwargs: dict[dict] | None = None
@@ -301,7 +317,6 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
     n_init: int | Literal["auto"] = 1
     oversampling_factor: float = 2.0
     max_samples_per_batch: int = 1 << 15
-    # Read / Write args
     """KMeans clustering stage that requires RAFT for distributed processing.
 
     Args:
@@ -331,13 +346,23 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
         super().__init__()
 
     def decompose(self) -> list[ProcessingStage]:
+        # Set default file extensions based on input_filetype if not provided
+        if self.input_file_extensions is None:
+            if self.input_filetype == "jsonl":
+                file_extensions = [".jsonl", ".json"]
+            elif self.input_filetype == "parquet":
+                file_extensions = [".parquet"]
+            else:
+                msg = f"Unsupported filetype: {self.input_filetype}"
+                raise ValueError(msg)
+        else:
+            file_extensions = self.input_file_extensions
+
         return [
             FilePartitioningStage(
                 file_paths=self.input_path,
-                filetype=self.input_filetype,
-                embedding_dim=self.embedding_dim,
-                file_extensions=self.input_file_extensions,
-                read_kwargs=self.read_kwargs,
+                file_extensions=file_extensions,
+                files_per_partition=1,  # We set this to one, and then the RaftActor will break it up into smaller groups
             ),
             KMeansReadFitWriteStage(
                 id_field=self.id_field,

@@ -1,17 +1,21 @@
 """End-to-end integration tests for KMeans semantic deduplication stage."""
 
+# ruff: noqa: E402
+import pytest
+
+cudf = pytest.importorskip("cudf")
+cuml = pytest.importorskip("cuml")
+
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
-import pytest
-from loguru import logger
 from sklearn.datasets import make_blobs
 
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 from ray_curator.pipeline import Pipeline
 from ray_curator.stages.deduplication.semantic.kmeans import KMeansStage
+from ray_curator.stages.deduplication.semantic.utils import get_array_from_df
 
 N_CLUSTERS = 4
 N_SAMPLES_PER_CLUSTER = 100
@@ -57,41 +61,31 @@ def create_clustered_dataset(  # noqa: PLR0913
     input_dir.mkdir(parents=True, exist_ok=True)
 
     # Create dataframe with embeddings and IDs
-    data = []
-    for i, (embedding, label) in enumerate(zip(X_normalized, y_true, strict=False)):
-        record = {
-            "id": f"doc_{i}",
-            "text": f"Document {i} from cluster {label}",
-            "embeddings": embedding.tolist(),
-            "true_cluster": int(label),  # Ground truth for verification
-        }
-        data.append(record)
-
-    df = pd.DataFrame(data).sample(frac=1, random_state=random_state).reset_index(drop=True)
-
-    # Write data in specified format
     num_files = 20  # Create multiple files to test file partitioning
-    samples_per_file = len(df) // num_files
+    samples_per_file = len(X_normalized) // num_files
 
     for file_idx in range(num_files):
         start_idx = file_idx * samples_per_file
-        end_idx = (file_idx + 1) * samples_per_file if file_idx < num_files - 1 else len(df)
-        file_data = df.iloc[start_idx:end_idx]
+        end_idx = (file_idx + 1) * samples_per_file if file_idx < num_files - 1 else len(X_normalized)
+        df = pd.DataFrame(
+            {
+                "id": np.arange(start_idx, end_idx),
+                "embeddings": X_normalized[start_idx:end_idx].tolist(),
+                "true_cluster": y_true[start_idx:end_idx].tolist(),
+            }
+        )
 
-        if not file_data.empty:
-            if file_format == "parquet":
-                file_path = input_dir / f"data_part_{file_idx:02d}.parquet"
-                file_data.to_parquet(file_path, index=False)
-            elif file_format == "jsonl":
-                file_path = input_dir / f"data_part_{file_idx:02d}.jsonl"
-                file_data.to_json(file_path, orient="records", lines=True)
-            else:
-                msg = f"Unsupported file format: {file_format}"
-                raise ValueError(msg)
+        if file_format == "parquet":
+            file_path = input_dir / f"data_part_{file_idx:02d}.parquet"
+            df.to_parquet(file_path, index=False)
+        elif file_format == "jsonl":
+            file_path = input_dir / f"data_part_{file_idx:02d}.jsonl"
+            df.to_json(file_path, orient="records", lines=True)
+        else:
+            msg = f"Unsupported file format: {file_format}"
+            raise ValueError(msg)
 
-        logger.info(f"Created {file_path}")
-
-    return input_dir, X_normalized, y_true
+    return input_dir, y_true
 
 
 def create_kmeans_pipeline(
@@ -134,179 +128,94 @@ def create_kmeans_pipeline(
     return pipeline
 
 
-def verify_kmeans_results_with_cuml(
-    output_dir: Path,
-    true_labels: np.ndarray,
+def run_single_gpu_baseline(
+    input_dir: Path,
     n_clusters: int = N_CLUSTERS,
-) -> dict[str, Any]:
-    """Verify KMeans results by comparing with cuML KMeans on the same data.
-
-    Args:
-        output_dir: Directory containing KMeans stage output
-        true_labels: Ground truth cluster labels
-        n_clusters: Number of clusters
-
-    Returns:
-        Dictionary containing verification metrics
-    """
-    cudf = pytest.importorskip("cudf", reason="cuML verification requires cudf")
-    cuml = pytest.importorskip("cuml", reason="cuML verification requires cuml")
-    cp = pytest.importorskip("cupy", reason="cuML verification requires cupy")
-
-    # Read the KMeans stage output
-    output_files = list(output_dir.glob("**/*.parquet"))
-    assert len(output_files) > 0, "No output files found"
-
-    # Combine all output files
-    dfs = []
-    for file_path in output_files:
-        df = cudf.read_parquet(file_path)
-        dfs.append(df)
-
-    combined_df = cudf.concat(dfs, ignore_index=True)
-
-    # Extract embeddings and predicted clusters (embeddings are already normalized)
-    normalized_embeddings = np.stack([np.array(row) for row in combined_df["embeddings"].to_pandas()])
-    stage_clusters = combined_df["centroid"].to_pandas().to_numpy()
-
-    # Run cuML KMeans on the same normalized data for comparison
-    cuml_kmeans = cuml.KMeans(
+    file_format: str = "parquet",
+) -> np.ndarray:
+    single_gpu_kmeans = cuml.KMeans(
         n_clusters=n_clusters,
         init="k-means++",
         max_iter=300,
         tol=1e-4,
         random_state=RANDOM_STATE,
+        output_type="numpy",  # Use numpy output for easier comparison
     )
 
-    # Convert to cupy for cuML
-    cupy_embeddings = cp.asarray(normalized_embeddings)
-    cuml_clusters = cuml_kmeans.fit_predict(cupy_embeddings).get()
-    cuml_centroids = cuml_kmeans.cluster_centers_.get()
+    # Read data based on file format
+    if file_format == "parquet":
+        df = cudf.read_parquet(input_dir)
+    elif file_format == "jsonl":
+        df = cudf.read_json(input_dir, lines=True)
+    else:
+        msg = f"Unsupported file format: {file_format}"
+        raise ValueError(msg)
 
-    # Calculate metrics
-    from sklearn.metrics import adjusted_rand_score, silhouette_score
+    embeddings = get_array_from_df(df, "embeddings")
+    single_gpu_kmeans.fit(embeddings)
+    df["centroid"] = single_gpu_kmeans.predict(embeddings)
 
-    # Compare stage results with cuML results
-    stage_cuml_ari = adjusted_rand_score(stage_clusters, cuml_clusters)
-
-    # Compare both with ground truth
-    stage_true_ari = adjusted_rand_score(stage_clusters, true_labels)
-    cuml_true_ari = adjusted_rand_score(cuml_clusters, true_labels)
-
-    # Calculate silhouette scores
-    stage_silhouette = silhouette_score(normalized_embeddings, stage_clusters)
-    cuml_silhouette = silhouette_score(normalized_embeddings, cuml_clusters)
-
-    # Check that distances are computed correctly
-    assert "l2_dist_to_cent" in combined_df.columns
-    assert "cosine_dist_to_cent" in combined_df.columns
-
-    # Verify distance calculations
-    stage_centroids_from_output = None
-    centroid_files = list(output_dir.glob("**/centroids*.npy"))
-    if centroid_files:
-        stage_centroids_from_output = np.load(centroid_files[0])
-
-    return {
-        "stage_cuml_ari": stage_cuml_ari,
-        "stage_true_ari": stage_true_ari,
-        "cuml_true_ari": cuml_true_ari,
-        "stage_silhouette": stage_silhouette,
-        "cuml_silhouette": cuml_silhouette,
-        "n_output_files": len(output_files),
-        "n_samples": len(combined_df),
-        "unique_clusters": len(set(stage_clusters)),
-        "stage_centroids": stage_centroids_from_output,
-        "cuml_centroids": cuml_centroids,
-    }
+    return df.sort_values("id", ignore_index=True)["centroid"].to_numpy()
 
 
 @pytest.mark.gpu
 @pytest.mark.parametrize(
     "file_format",
-    [
-        # "parquet",
-        "jsonl"
-    ],
+    ["parquet", "jsonl"],
 )
 class TestKMeansStageIntegration:
-    """Integration tests for KMeansStage with RayActorPoolExecutor."""
+    """Integration tests for KMeansStage comparing multi-GPU vs single-GPU results."""
 
-    def test_kmeans_stage_e2e(
+    def test_multi_gpu_vs_single_gpu_consistency(
         self,
         tmp_path: Path,
         file_format: str,
     ) -> None:
-        """End-to-end test of KMeans stage with synthetic clustered data.
+        """Test that multi-GPU KMeans produces consistent results with single-GPU baseline.
 
         This test:
         1. Creates synthetic clustered data with known ground truth
-        2. Runs KMeansStage using RayActorPoolExecutor
-        3. Verifies results by comparing with cuML KMeans
-        4. Checks that clustering quality is reasonable
+        2. Runs single-GPU cuML KMeans as baseline
+        3. Runs multi-GPU KMeansStage using RayActorPoolExecutor
+        4. Verifies that both produce the same number of clusters
+        5. Checks that clustering assignments are reasonable given the ground truth
         """
         # Generate synthetic clustered dataset
-        input_dir, original_embeddings, true_labels = create_clustered_dataset(tmp_path, file_format=file_format)
-
-        input_files = list(input_dir.glob(f"**/*.{file_format}"))
-        logger.info(f"Input files: {len(input_files)}")
+        input_dir, true_labels = create_clustered_dataset(tmp_path, file_format=file_format)
 
         # Create output directory
         output_dir = tmp_path / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create and run pipeline
+        # Step 1: Run multi-GPU pipeline first to get output data
         pipeline = create_kmeans_pipeline(input_dir, output_dir, file_format=file_format)
-
-        # Execute with RayActorPoolExecutor
         executor = RayActorPoolExecutor()
         results = pipeline.run(executor)
 
         # Verify pipeline execution
         assert len(results) > 0, "Pipeline should produce results"
 
-        # Verify output files exist
-        output_files = list(output_dir.glob("**/*.parquet"))
-        assert len(output_files) > 0, "Should produce output files"
+        # Step 2: Run single-GPU baseline on the input data
+        single_gpu_assignments = run_single_gpu_baseline(input_dir, file_format=file_format)
 
-        # Verify results with cuML
-        metrics = verify_kmeans_results_with_cuml(output_dir, original_embeddings, true_labels)
-
-        # Assertions for clustering quality
-        assert metrics["n_samples"] == len(original_embeddings), "Should process all input samples"
-        assert metrics["unique_clusters"] == N_CLUSTERS, f"Should produce {N_CLUSTERS} clusters"
-        assert metrics["n_output_files"] > 0, "Should produce output files"
-
-        # Verify that the KMeans stage produces reasonable results
-        # Note: We focus on pipeline correctness rather than clustering quality
-        # since sklearn's make_blobs with normalization can produce challenging clustering scenarios
-
-        # Both methods should produce some clustering structure
-        print(f"Stage vs Ground Truth ARI: {metrics['stage_true_ari']:.3f}")
-        print(f"cuML vs Ground Truth ARI: {metrics['cuml_true_ari']:.3f}")
-        print(f"Stage vs cuML ARI: {metrics['stage_cuml_ari']:.3f}")
-        print(f"Stage Silhouette Score: {metrics['stage_silhouette']:.3f}")
-        print(f"cuML Silhouette Score: {metrics['cuml_silhouette']:.3f}")
-
-        # Verify that both methods produce similar results (main integration test)
-        assert metrics["stage_cuml_ari"] > 0.8, (
-            f"Stage and cuML results should be highly similar (got {metrics['stage_cuml_ari']:.3f})"
+        # Step 3: Compare results with multi-GPU baseline
+        multi_gpu_assignments = (
+            cudf.read_parquet(output_dir).sort_values("id", ignore_index=True)["centroid"].to_numpy()
         )
 
-        # Verify clustering produces reasonable structure
-        assert metrics["stage_silhouette"] > -0.5, (
-            f"Stage clustering should not be completely random (got {metrics['stage_silhouette']:.3f})"
-        )
-        assert metrics["cuml_silhouette"] > -0.5, (
-            f"cuML clustering should not be completely random (got {metrics['cuml_silhouette']:.3f})"
-        )
+        from sklearn.metrics import adjusted_rand_score
 
-        # Check that centroids are reasonable
-        if metrics["stage_centroids"] is not None and metrics["cuml_centroids"] is not None:
-            # Centroids should be in similar regions of space
-            stage_centroids = metrics["stage_centroids"]
-            cuml_centroids = metrics["cuml_centroids"]
+        # Compare with ground truth
+        multi_gpu_ari = adjusted_rand_score(multi_gpu_assignments, true_labels)
+        single_gpu_ari = adjusted_rand_score(single_gpu_assignments, true_labels)
 
-            assert stage_centroids.shape == cuml_centroids.shape, "Centroids should have same shape"
-            assert stage_centroids.shape[0] == N_CLUSTERS, f"Should have {N_CLUSTERS} centroids"
-            assert stage_centroids.shape[1] == EMBEDDING_DIM, f"Centroids should have {EMBEDDING_DIM} dimensions"
+        # Both should produce reasonable clustering (not random)
+        assert multi_gpu_ari > 0.99, f"Multi-GPU clustering should be better than random (got {multi_gpu_ari:.3f})"
+        assert single_gpu_ari > 0.99, f"Single-GPU clustering should be better than random (got {single_gpu_ari:.3f})"
+
+        # The key insight: both methods should produce similar quality results
+        # since they're using the same algorithm on the same data
+        quality_diff = abs(multi_gpu_ari - single_gpu_ari)
+        assert quality_diff < 0.01, (
+            f"Multi-GPU and single-GPU should produce similar quality results (difference: {quality_diff:.3f})"
+        )

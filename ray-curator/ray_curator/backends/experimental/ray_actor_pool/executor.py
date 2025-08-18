@@ -89,9 +89,7 @@ class RayActorPoolExecutor(BaseExecutor):
                 else:
                     actor_pool = self._create_actor_pool(stage, num_actors)
 
-                logger.info(
-                    f"Created actor pool for {stage.name} with {num_actors} actors {len(actor_pool._idle_actors)=}"
-                )
+                logger.info(f"Created actor pool for {stage.name} with {num_actors} actors")
                 # Process tasks through this stage using ActorPool
                 current_tasks = self._process_stage_with_pool(actor_pool, stage, current_tasks)
 
@@ -191,12 +189,16 @@ class RayActorPoolExecutor(BaseExecutor):
                     f"Stage {_stage.name} is a RAFT stage but has a batch size of {stage_batch_size}. Ignoring batch size."
                 )
             stage_batch_size = math.ceil(len(tasks) / len(actor_pool._idle_actors))
-        logger.info(f"Broke down {len(tasks)} tasks into {stage_batch_size} batches for {_stage.name}")
 
         task_batches = []
         for i in range(0, len(tasks), stage_batch_size):
             batch = tasks[i : i + stage_batch_size]
             task_batches.append(batch)
+
+        logger.info(
+            f"Broke down {len(tasks)} tasks into batches of {stage_batch_size} for a total of {len(task_batches)} batches for {_stage.name}"
+        )
+
         # Process each task and flatten the results since each task can produce multiple output tasks
         all_results = []
         for result_batch in actor_pool.map_unordered(
