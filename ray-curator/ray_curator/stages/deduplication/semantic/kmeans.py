@@ -49,7 +49,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
         verbose: bool = False,
         max_iter: int = 300,
         tol: float = 1e-4,
-        random_state: int = 1,
+        random_state: int = 42,
         init: Literal["k-means||", "random"] | np.ndarray = "k-means||",
         n_init: int | Literal["auto"] = 1,
         oversampling_factor: float = 2.0,
@@ -254,8 +254,6 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
 
     @staticmethod
     def normalize_embeddings_col_in_df(df: "cudf.DataFrame", embedding_col: str) -> "cudf.DataFrame":
-        # TODO: move to ray_curator
-
         tensor = torch.Tensor(get_array_from_df(df, embedding_col))
         normalized_tensor = tensor / torch.norm(tensor, dim=1, keepdim=True)
         df[embedding_col] = create_list_series_from_1d_or_2d_ar(cp.asarray(normalized_tensor), index=df.index)
@@ -307,7 +305,7 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
     # KMeans args
     max_iter: int = 300
     tol: float = 1e-4
-    random_state: int = 1
+    random_state: int = 42
     init: Literal["k-means||", "random"] | np.ndarray = "k-means||"
     n_init: int | Literal["auto"] = 1
     oversampling_factor: float = 2.0

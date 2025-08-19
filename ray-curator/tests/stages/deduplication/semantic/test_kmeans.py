@@ -212,7 +212,7 @@ class TestKMeansStageIntegration:
                     input_path=str(request.cls.input_dir),
                     output_path=str(request.cls.output_dir),
                     metadata_fields=["random_col", "true_cluster"],
-                    embedding_dim=EMBEDDING_DIM * 100_000,
+                    embedding_dim=EMBEDDING_DIM,
                     input_filetype=request.cls.file_format,
                     verbose=True,
                     random_state=RANDOM_STATE,
