@@ -397,6 +397,7 @@ class TestKMeansReadFitWriteStage:
             id_field="id",
             embedding_field="embeddings",
             output_path=str(output_dir),
+            filetype="parquet",
             n_clusters=2,
             metadata_fields=["metadata_col"],
             embedding_dim=32,
