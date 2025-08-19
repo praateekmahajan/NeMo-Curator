@@ -11,6 +11,7 @@ from ray_curator.stages.file_partitioning import FilePartitioningStage
 from ray_curator.stages.resources import Resources
 from ray_curator.stages.text.embedders.utils import create_list_series_from_1d_or_2d_ar
 from ray_curator.tasks import FileGroupTask, _EmptyTask
+from ray_curator.utils.file_utils import FILETYPE_TO_DEFAULT_EXTENSIONS
 
 from .utils import break_parquet_partition_into_groups, get_array_from_df
 
@@ -26,13 +27,6 @@ from loguru import logger
 L2_DIST_TO_CENT_COL = "l2_dist_to_cent"
 COSINE_DIST_TO_CENT_COL = "cosine_dist_to_cent"
 
-FILETYPE_TO_EXTENSIONS = {
-    "parquet": [".parquet"],
-    "jsonl": [".jsonl", ".json"],
-}
-# Create a flat extension -> filetype mapping
-EXTENSION_TO_FILETYPE = {ext: filetype for filetype, exts in FILETYPE_TO_EXTENSIONS.items() for ext in exts}
-
 
 class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], DeduplicationIO):
     """KMeans clustering stage that requires RAFT for distributed processing."""
@@ -42,6 +36,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
         id_field: str,
         embedding_field: str,
         output_path: str,
+        filetype: Literal["parquet", "jsonl"],
         # KMeans args
         n_clusters: int,
         metadata_fields: list[str] | None = None,
@@ -81,6 +76,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
         self.id_field = id_field
         self.embedding_field = embedding_field
         self.output_path = output_path
+        self.filetype = filetype
         self.n_clusters = n_clusters
         self.metadata_fields = metadata_fields if metadata_fields is not None else []
         self.embedding_dim = embedding_dim
@@ -131,21 +127,14 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
         # Collect all files from all tasks
         all_files = [file for task in tasks for file in task.data]
 
-        # Get filetype from file extension
-        filename = all_files[0]
-        filetype = next((EXTENSION_TO_FILETYPE[ext] for ext in EXTENSION_TO_FILETYPE if filename.endswith(ext)), None)
-
-        if filetype is None:
-            msg = f"Unsupported file extension for {filename}. Supported extensions: {list(EXTENSION_TO_FILETYPE.keys())}"
-            raise ValueError(msg)
         # Break files into subgroups to avoid cudf row limits
-        if filetype == "parquet":
+        if self.filetype == "parquet":
             groups = break_parquet_partition_into_groups(all_files, embedding_dim=self.embedding_dim)
-        elif filetype == "jsonl":
+        elif self.filetype == "jsonl":
             # For JSONL files, just group all files together since we can't easily estimate size
             groups = [all_files]
         else:
-            msg = f"Unsupported filetype: {filetype}. Only jsonl and parquet are supported."
+            msg = f"Unsupported filetype: {self.filetype}. Only jsonl and parquet are supported."
             raise ValueError(msg)
 
         # Read each subgroup independently
@@ -154,7 +143,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
 
         for group in groups:
             # Read all files in this group
-            if filetype == "parquet":
+            if self.filetype == "parquet":
                 df = self.read_parquet(
                     group,
                     columns=[self.id_field, self.embedding_field, *self.metadata_fields],
@@ -162,7 +151,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
                     assign_id=False,
                     **self.read_kwargs,
                 )
-            elif filetype == "jsonl":
+            elif self.filetype == "jsonl":
                 df = self.read_jsonl(
                     group,
                     columns=[self.id_field, self.embedding_field, *self.metadata_fields],
@@ -171,7 +160,7 @@ class KMeansReadFitWriteStage(ProcessingStage[FileGroupTask, _EmptyTask], Dedupl
                     **self.read_kwargs,
                 )
             else:
-                msg = f"Unsupported data type: {filetype}"
+                msg = f"Unsupported data type: {self.filetype}"
                 raise ValueError(msg)
 
             # Normalize the embeddings
@@ -300,6 +289,7 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
     embedding_dim: int | None = None
     # I/O args
     input_filetype: Literal["jsonl", "parquet"] = "parquet"
+    input_file_extensions: list[str] | None = None
     read_kwargs: dict[dict] | None = None
     write_kwargs: dict[dict] | None = None
     # KMeans args
@@ -339,7 +329,7 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
 
     def decompose(self) -> list[ProcessingStage]:
         # Set default file extensions based on input_filetype if not provided
-        file_extensions = FILETYPE_TO_EXTENSIONS.get(self.input_filetype, [])
+        file_extensions = self.input_file_extensions or FILETYPE_TO_DEFAULT_EXTENSIONS.get(self.input_filetype, [])
         if not file_extensions:
             msg = f"Unsupported filetype: {self.input_filetype}"
             raise ValueError(msg)
@@ -355,9 +345,11 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
                 id_field=self.id_field,
                 embedding_field=self.embedding_field,
                 output_path=self.output_path,
+                filetype=self.input_filetype,
                 n_clusters=self.n_clusters,
                 metadata_fields=self.metadata_fields,
                 verbose=self.verbose,
+                embedding_dim=self.embedding_dim,
                 max_iter=self.max_iter,
                 tol=self.tol,
                 random_state=self.random_state,
