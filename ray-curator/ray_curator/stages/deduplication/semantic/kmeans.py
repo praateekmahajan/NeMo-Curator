@@ -322,7 +322,6 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
         verbose (bool): Whether to print verbose output.
         embedding_dim (int | None): The dimension of the embedding. This helps us read data into smaller chunks.
         input_filetype (Literal["jsonl", "parquet"]): The type of the input file
-        input_file_extensions (list[str] | None): The file extensions of the input files. If not provided, we will infer it from the filetype.
         read_kwargs (dict[dict]): Keyword arguments for the read stage.
         write_kwargs (dict[dict]): Keyword arguments for the write stage.
         max_iter (int): The maximum number of iterations to run.
@@ -350,6 +349,7 @@ class KMeansStage(CompositeStage[_EmptyTask, _EmptyTask]):
                 file_paths=self.input_path,
                 file_extensions=file_extensions,
                 files_per_partition=1,  # We set this to one, and then the RaftActor will break it up into smaller groups
+                storage_options=self.read_kwargs.get("storage_options"),
             ),
             KMeansReadFitWriteStage(
                 id_field=self.id_field,

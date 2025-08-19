@@ -14,6 +14,9 @@
 
 from typing import TYPE_CHECKING
 
+import pyarrow.parquet as pq
+from fsspec.parquet import open_parquet_file
+
 if TYPE_CHECKING:
     import cudf
     import cupy as cp
@@ -40,9 +43,6 @@ def break_parquet_partition_into_groups(
 
     cudf_max_num_rows = 2_000_000_000  # cudf only allows 2bn rows
     cudf_max_num_elements = cudf_max_num_rows / embedding_dim  # cudf considers each element in an array to be a row
-
-    import pyarrow.parquet as pq
-    from fsspec.parquet import open_parquet_file
 
     # Load the first file and get the number of rows to estimate
     with open_parquet_file(files[0], storage_options=storage_options) as f:

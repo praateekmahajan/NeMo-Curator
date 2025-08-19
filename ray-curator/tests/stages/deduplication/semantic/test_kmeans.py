@@ -13,6 +13,8 @@ cudf = pytest.importorskip("cudf")
 cuml = pytest.importorskip("cuml")
 cp = pytest.importorskip("cupy")
 
+from sklearn.metrics import adjusted_rand_score
+
 from ray_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 from ray_curator.pipeline import Pipeline
 from ray_curator.stages.deduplication.semantic.kmeans import KMeansReadFitWriteStage, KMeansStage
@@ -236,9 +238,6 @@ class TestKMeansStageIntegration:
         )
 
         # Compare results with multi-GPU baseline
-        from sklearn.metrics import adjusted_rand_score
-
-        # Compare with ground truth
         multi_gpu_ari = adjusted_rand_score(multi_gpu_assignments, self.true_labels)
         single_gpu_ari = adjusted_rand_score(single_gpu_assignments, self.true_labels)
 
