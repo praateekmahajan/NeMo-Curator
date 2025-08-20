@@ -15,9 +15,10 @@
 import os
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 import cudf
+import cupy as cp
 import numpy as np
 import torch
 from loguru import logger
@@ -31,9 +32,6 @@ from ray_curator.tasks import FileGroupTask, _EmptyTask
 from .pairwise_io import ClusterWiseFilePartitioningStage
 from .ranking import RankingStrategy
 from .utils import break_parquet_partition_into_groups, get_array_from_df
-
-if TYPE_CHECKING:
-    import cupy as cp
 
 
 def pairwise_cosine_similarity_batched(
@@ -67,8 +65,6 @@ def pairwise_cosine_similarity_batched(
         max_indices[start_idx:end_idx] = max_values_and_indices[1]
 
     if device == "cuda":
-        import cupy as cp
-
         return cp.asarray(max_similarity), cp.asarray(max_indices)
     else:
         # convert to numpy arrays
