@@ -55,7 +55,8 @@ def break_parquet_partition_into_groups(
     # Break files into subgroups
     subgroups = [files[i : i + max_files_per_subgroup] for i in range(0, len(files), max_files_per_subgroup)]
 
-    logger.debug(
-        f"Broke {len(files)} files into {len(subgroups)} subgroups with max {max_files_per_subgroup} files per subgroup"
-    )
+    if len(subgroups) > 1:
+        logger.debug(
+            f"Broke {len(files)} files into {len(subgroups)} subgroups with max {max_files_per_subgroup} files per subgroup"
+        )
     return subgroups

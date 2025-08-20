@@ -117,7 +117,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[FileGroupTask, FileGroupTask
         self._name = "PairwiseCosineSimilarityStage"
         self._resources = Resources(cpus=1.0, gpus=1.0)
 
-    def process(self, task: FileGroupTask) -> FileGroupTask:  # noqa: C901, PLR0915
+    def process(self, task: FileGroupTask) -> FileGroupTask:
         """Process a PairwiseFileGroupTask to compute pairwise similarities."""
         if task._metadata.get("filetype") != "parquet":
             msg = f"PairwiseCosineSimilarityStage only supports parquet files, got {task._metadata.get('filetype')}"
@@ -206,9 +206,6 @@ class PairwiseCosineSimilarityStage(ProcessingStage[FileGroupTask, FileGroupTask
         metadata_cluster_df["_original_idx"] = metadata_cluster_df.index
 
         ranked_metadata_df = self.ranking_strategy.rank_cluster(metadata_cluster_df)
-        if self.verbose:
-            logger.debug(f"Applied ranking strategy: {type(self.ranking_strategy).__name__}")
-
         # Get reorder indices from the ranked dataframe (TODO: we get it to CPU, but maybe we can do it on GPU todo)
         reorder_indices = ranked_metadata_df["_original_idx"].to_arrow().to_pylist()
         # Remove the helper column

@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .identify_duplicates import IdentifyDuplicatesStage
 from .pairwise import PairwiseStage
 from .ranking import RankingStrategy
 
-__all__ = ["PairwiseStage", "RankingStrategy"]
+__all__ = ["IdentifyDuplicatesStage", "PairwiseStage", "RankingStrategy"]
