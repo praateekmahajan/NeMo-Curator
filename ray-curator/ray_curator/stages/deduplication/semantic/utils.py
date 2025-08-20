@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
 from typing import Any
 
+import pyarrow.parquet as pq
+from fsspec.parquet import open_parquet_file
 from loguru import logger
 
 
@@ -41,9 +43,6 @@ def break_parquet_partition_into_groups(
     cudf_max_num_rows = 2_000_000_000  # cudf only allows 2bn rows
     cudf_max_num_elements = cudf_max_num_rows / embedding_dim  # cudf considers each element in an array to be a row
 
-    import pyarrow.parquet as pq
-    from fsspec.parquet import open_parquet_file
-
     # Load the first file and get the number of rows to estimate
     with open_parquet_file(files[0], storage_options=storage_options) as f:
         # Multiply by 1.5 to adjust for skew
@@ -54,7 +53,6 @@ def break_parquet_partition_into_groups(
 
     # Break files into subgroups
     subgroups = [files[i : i + max_files_per_subgroup] for i in range(0, len(files), max_files_per_subgroup)]
-
     if len(subgroups) > 1:
         logger.debug(
             f"Broke {len(files)} files into {len(subgroups)} subgroups with max {max_files_per_subgroup} files per subgroup"
