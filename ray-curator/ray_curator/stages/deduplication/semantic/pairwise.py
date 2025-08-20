@@ -211,10 +211,6 @@ class PairwiseCosineSimilarityStage(ProcessingStage[FileGroupTask, FileGroupTask
         # Remove the helper column
         ranked_metadata_df = ranked_metadata_df.drop(columns=["_original_idx"])
 
-        t2 = time.perf_counter()
-        if self.verbose:
-            logger.debug(f"Read and ranked cluster {cluster_id} with {num_rows} rows in {(t2 - t1):.2f} seconds")
-
         # Convert numpy arrays to torch tensors before concatenating
         concatenated_embeddings = torch.cat([torch.as_tensor(arr, device="cuda") for arr in embedding_arrays], dim=0)
         cluster_embeddings = concatenated_embeddings[reorder_indices]
@@ -239,16 +235,14 @@ class PairwiseCosineSimilarityStage(ProcessingStage[FileGroupTask, FileGroupTask
             }
         )
 
-        t3 = time.perf_counter()
-        if self.verbose:
-            logger.debug(f"Pairwise computation for cluster {cluster_id} done in {(t3 - t2):.2f} seconds")
-
         # Write results
         self.write_parquet(points_to_remove_df, output_path, storage_options=self.output_storage_options, index=False)
 
-        t4 = time.perf_counter()
+        t2 = time.perf_counter()
         if self.verbose:
-            logger.debug(f"Write for cluster {cluster_id} done in {(t4 - t3):.2f} seconds")
+            logger.debug(
+                f"Pairwise computation for cluster {cluster_id} with {num_rows} rows done in {(t2 - t1):.2f} seconds"
+            )
 
         return FileGroupTask(
             task_id=task.task_id,

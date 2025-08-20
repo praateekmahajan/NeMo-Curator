@@ -79,7 +79,7 @@ class IdentifyDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTask]):
                 msg = f"Task {task!s} failed validation for stage {self}"
                 raise ValueError(msg)
 
-        if not tasks:
+        if len(tasks) == 0:
             return []
 
         all_files = [file for task in tasks for file in task.data]
