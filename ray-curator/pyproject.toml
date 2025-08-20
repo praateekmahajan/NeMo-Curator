@@ -23,8 +23,7 @@ requires-python = ">=3.10,<3.13"
 dependencies = [
     "absl-py>=2.0.0,<3.0.0",
     "comment_parser",
-    "cosmos-xenna",
-    "crossfit>=0.0.9",
+    "cosmos-xenna @ git+https://github.com/nvidia-cosmos/cosmos-xenna.git@main",
     "fsspec",
     "jieba==0.42.1",
     "loguru",
@@ -63,6 +62,7 @@ deduplication_cuda12x = [
     "nx-cugraph-cu12==25.6.*",
     "pylibraft-cu12==25.6.*",
     "raft-dask-cu12==25.6.*",
+    "rapidsmpf-cu12==25.6.*",
 ]
 
 dev = [
@@ -72,11 +72,18 @@ dev = [
     "pytest-coverage",
     "pytest-loguru",
     "ruff==0.11.4",
+    "scikit-learn",
 ]
-
 video = [
     "av==13.1.0",
     "opencv-python",
+    "torchvision",
+    "einops",
+]
+video_cuda = [
+    "PyNvVideoCodec==1.0.2",
+    "cvcuda_cu12",
+    "pycuda",
 ]
 
 all = [
