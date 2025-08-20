@@ -47,7 +47,7 @@ def test_get_array_from_df() -> None:
 @pytest.mark.gpu  # TODO : Remove this once we figure out how to import semantic on CPU
 class TestBreakParquetPartitionIntoGroups:
     @patch("pyarrow.parquet.read_metadata", return_value=Mock(num_rows=10_000))
-    @patch("fsspec.parquet.open_parquet_file")
+    @patch("ray_curator.stages.deduplication.semantic.utils.open_parquet_file")
     def test_calculation_logic(self, mock_open_parquet: Mock, mock_read_metadata: Mock) -> None:
         from ray_curator.stages.deduplication.semantic.utils import break_parquet_partition_into_groups
 
@@ -55,8 +55,7 @@ class TestBreakParquetPartitionIntoGroups:
         # Mock the parquet metadata to return a specific number of rows
 
         test_files = [f"mock_file_{i}.parquet" for i in range(1000)]
-
-        # Test with embedding_dim=512
+        # Test with embedding_dim=1000
         # Expected calculation:
         # - cudf_max_num_rows = 2_000_000_000
         # - cudf_max_num_elements = 2_000_000_000 / 1000 = 2_000_000

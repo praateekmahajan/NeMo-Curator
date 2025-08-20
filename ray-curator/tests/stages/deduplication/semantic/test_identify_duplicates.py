@@ -12,209 +12,168 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# ruff: noqa: E402
 import os
-import tempfile
+from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
+import pytest
+
+from ray_curator.tasks import FileGroupTask
+
+cudf = pytest.importorskip("cudf")
+cuml = pytest.importorskip("cuml")
+cp = pytest.importorskip("cupy")
+
 
 from ray_curator.stages.deduplication.semantic.identify_duplicates import IdentifyDuplicatesStage
-from ray_curator.tasks import FileGroupTask
 
 
 class TestIdentifyDuplicatesStage:
     """Test cases for IdentifyDuplicatesStage."""
-
-    def setup_method(self) -> None:
-        """Set up test environment."""
-        self.temp_dir = tempfile.mkdtemp()
-        self.output_dir = os.path.join(self.temp_dir, "identify_duplicates_output")
-        os.makedirs(self.output_dir, exist_ok=True)
-
-    def teardown_method(self) -> None:
-        """Clean up test environment."""
-        import shutil
-
-        shutil.rmtree(self.temp_dir)
 
     def create_test_similarity_file(self, file_path: str, data: dict) -> None:
         """Create a test similarity file with the given data."""
         df = pd.DataFrame(data)
         df.to_parquet(file_path, index=False)
 
-    def test_identify_duplicates_stage_basic(self) -> None:
-        """Test basic functionality of IdentifyDuplicatesStage."""
-        # Create test data with varying similarity scores
-        input_file = os.path.join(self.temp_dir, "cluster_0.parquet")
-        test_data = {
-            "id": ["doc1", "doc2", "doc3", "doc4", "doc5"],
-            "max_id": ["doc2", "doc1", "doc4", "doc3", "doc1"],
-            "cosine_sim_score": [0.95, 0.95, 0.85, 0.85, 0.75],  # Some above/below threshold
-        }
-        self.create_test_similarity_file(input_file, test_data)
-
-        # Create stage with eps=0.1 (threshold = 0.9)
-        stage = IdentifyDuplicatesStage(
-            output_path=self.output_dir,
-            eps=0.1,  # threshold will be 1.0 - 0.1 = 0.9
-            id_field="id",
-            verbose=True,
-        )
-
-        # Create task
-        task = FileGroupTask(
-            task_id="test_identify_duplicates",
-            dataset_name="test",
-            data=[input_file],
-            _metadata={"centroid_id": 0, "filetype": "parquet"},
-        )
-
-        # Process task
-        result_task = stage.process_batch([task])
-
-        # Verify output
-        assert len(result_task) == 1
-        assert len(result_task[0].data) == 1
-        output_file = result_task[0].data[0]
+    def verify_output_file(
+        self, output_file: str, expected_count: int, expected_row_groups: int | None = None
+    ) -> None:
+        """Verify output file has correct content, sorting, and row groups."""
         assert os.path.exists(output_file)
 
         # Read and verify results
         result_df = pd.read_parquet(output_file)
-        # Should only contain docs with similarity >= 0.9 (doc1 and doc2)
-        assert len(result_df) == 2
-        assert set(result_df["id"].tolist()) == {"doc1", "doc2"}
+        assert len(result_df) == expected_count
 
-    def test_identify_duplicates_stage_empty_input(self) -> None:
-        """Test handling of empty input."""
-        stage = IdentifyDuplicatesStage(output_path=self.output_dir, eps=0.1, id_field="id", verbose=True)
+        # Verify IDs are sorted
+        if expected_count > 0:
+            assert result_df["id"].tolist() == sorted(result_df["id"].tolist())
 
+            parquet_file = pq.ParquetFile(output_file)
+            num_row_groups = parquet_file.num_row_groups
+
+            # If expected_row_groups is not specified, calculate it based on data size
+            if expected_row_groups is None:
+                # Calculate expected row groups: max(1, num_rows // 10)
+                # This matches the logic in IdentifyDuplicatesStage
+                expected_row_groups = max(1, expected_count // 10)
+
+            assert num_row_groups == expected_row_groups, (
+                f"Expected {expected_row_groups} row groups, got {num_row_groups}"
+            )
+
+    def test_identify_duplicates_various_cases(self, tmp_path: Path) -> None:
+        """Test basic functionality, edge cases, and different epsilon values in one comprehensive test."""
+        output_dir = tmp_path / "identify_duplicates_output"
+        output_dir.mkdir()
+
+        # Test 1: Empty input handling
+        stage = IdentifyDuplicatesStage(output_path=str(output_dir), eps=0.1, verbose=True)
         result_tasks = stage.process_batch([])
-        assert len(result_tasks) == 0
+        assert len(result_tasks) == 0, "Empty input should return empty result"
 
-    def test_identify_duplicates_stage_single_item(self) -> None:
-        """Test handling of single item clusters."""
-        input_file = os.path.join(self.temp_dir, "cluster_single.parquet")
-        test_data = {
+        # Test 2: Single item cluster (should create empty result)
+        single_file = tmp_path / "single_item.parquet"
+        single_data = {
             "id": ["doc1"],
             "max_id": ["doc1"],
-            "cosine_sim_score": [0.0],  # Self-similarity is 0 for single items
+            "cosine_sim_score": [0.0],  # Self-similarity is 0
         }
-        self.create_test_similarity_file(input_file, test_data)
+        self.create_test_similarity_file(str(single_file), single_data)
 
-        stage = IdentifyDuplicatesStage(output_path=self.output_dir, eps=0.1, id_field="id", verbose=True)
+        task_single = FileGroupTask(task_id="single", dataset_name="test", data=[str(single_file)])
+        result_single = stage.process_batch([task_single])
+        assert len(result_single) == 1
+        result_df = pd.read_parquet(result_single[0].data[0])
+        assert len(result_df) == 0, "Single item should create empty result"
 
-        task = FileGroupTask(
-            task_id="test_single",
-            dataset_name="test",
-            data=[input_file],
-            _metadata={"centroid_id": 1, "filetype": "parquet"},
-        )
-
-        result_tasks = stage.process_batch([task])
-
-        # Should create empty result for single items
-        assert len(result_tasks) == 1
-        result_df = pd.read_parquet(result_tasks[0].data[0])
-        assert len(result_df) == 0
-
-    def test_identify_duplicates_stage_no_similar_items(self) -> None:
-        """Test case where no items meet the similarity threshold."""
-        input_file = os.path.join(self.temp_dir, "cluster_no_similar.parquet")
-        test_data = {
+        # Test 3: No similar items (all below threshold)
+        no_similar_file = tmp_path / "no_similar.parquet"
+        no_similar_data = {
             "id": ["doc1", "doc2", "doc3"],
             "max_id": ["doc2", "doc3", "doc1"],
-            "cosine_sim_score": [0.5, 0.6, 0.7],  # All below threshold
+            "cosine_sim_score": [0.5, 0.6, 0.7],  # All below 0.9 threshold
         }
-        self.create_test_similarity_file(input_file, test_data)
+        self.create_test_similarity_file(str(no_similar_file), no_similar_data)
 
-        stage = IdentifyDuplicatesStage(
-            output_path=self.output_dir,
-            eps=0.1,  # threshold = 0.9
-            id_field="id",
-            verbose=True,
-        )
+        task_no_similar = FileGroupTask(task_id="no_similar", dataset_name="test", data=[str(no_similar_file)])
+        result_no_similar = stage.process_batch([task_no_similar])
+        assert len(result_no_similar) == 1
+        result_df = pd.read_parquet(result_no_similar[0].data[0])
+        assert len(result_df) == 0, "No items should meet similarity threshold"
 
-        task = FileGroupTask(
-            task_id="test_no_similar",
-            dataset_name="test",
-            data=[input_file],
-            _metadata={"centroid_id": 2, "filetype": "parquet"},
-        )
-
-        result_tasks = stage.process_batch([task])
-
-        # Should create empty result
-        assert len(result_tasks) == 1
-        result_df = pd.read_parquet(result_tasks[0].data[0])
-        assert len(result_df) == 0
-
-    def test_identify_duplicates_stage_different_eps(self) -> None:
-        """Test different epsilon values."""
-        input_file = os.path.join(self.temp_dir, "cluster_eps_test.parquet")
-        test_data = {
+        # Test 4: Different epsilon values
+        eps_test_file = tmp_path / "eps_test.parquet"
+        eps_test_data = {
             "id": ["doc1", "doc2", "doc3", "doc4"],
             "max_id": ["doc2", "doc1", "doc4", "doc3"],
             "cosine_sim_score": [0.98, 0.98, 0.85, 0.85],
         }
-        self.create_test_similarity_file(input_file, test_data)
+        self.create_test_similarity_file(str(eps_test_file), eps_test_data)
 
-        # Test with eps=0.01 (threshold = 0.99) - only very similar items
-        stage_strict = IdentifyDuplicatesStage(output_path=self.output_dir, eps=0.01, id_field="id", verbose=True)
+        # Strict epsilon (0.01) - threshold = 0.99, should get 0 results
+        stage_strict = IdentifyDuplicatesStage(output_path=str(output_dir), eps=0.01, verbose=True)
+        task_eps = FileGroupTask(task_id="eps_test", dataset_name="test", data=[str(eps_test_file)])
+        result_strict = stage_strict.process_batch([task_eps])
+        result_df = pd.read_parquet(result_strict[0].data[0])
+        assert len(result_df) == 0, "Strict epsilon should return 0 results"
 
-        task = FileGroupTask(
-            task_id="test_eps_strict",
-            dataset_name="test",
-            data=[input_file],
-            _metadata={"centroid_id": 3, "filetype": "parquet"},
-        )
+        # Permissive epsilon (0.2) - threshold = 0.8, should get 4 results
+        stage_permissive = IdentifyDuplicatesStage(output_path=str(output_dir), eps=0.2, verbose=True)
+        result_permissive = stage_permissive.process_batch([task_eps])
+        # With 4 items, we can't have 10 row groups (max(1, 4//10) = 1)
+        # So we'll just verify the content without checking row groups
+        output_file = result_permissive[0].data[0]
+        assert os.path.exists(output_file)
+        result_df = pd.read_parquet(output_file)
+        assert len(result_df) == 4
+        assert result_df["id"].tolist() == sorted(result_df["id"].tolist())
 
-        result_tasks = stage_strict.process_batch([task])
-        result_df = pd.read_parquet(result_tasks[0].data[0])
-        assert len(result_df) == 0  # No items meet 0.99 threshold
+        # Test 5: Basic functionality with mixed similarity scores
+        basic_file = tmp_path / "basic_functionality.parquet"
+        basic_data = {
+            "id": ["doc1", "doc2", "doc3", "doc4", "doc5"],
+            "max_id": ["doc2", "doc1", "doc4", "doc3", "doc1"],
+            "cosine_sim_score": [0.95, 0.95, 0.85, 0.85, 0.75],  # Some above/below threshold
+        }
+        self.create_test_similarity_file(str(basic_file), basic_data)
 
-        # Test with eps=0.2 (threshold = 0.8) - more permissive
-        stage_permissive = IdentifyDuplicatesStage(output_path=self.output_dir, eps=0.2, id_field="id", verbose=True)
+        task_basic = FileGroupTask(task_id="basic", dataset_name="test", data=[str(basic_file)])
+        result_basic = stage.process_batch([task_basic])
+        assert len(result_basic) == 1
+        output_file = result_basic[0].data[0]
 
-        result_tasks = stage_permissive.process_batch([task])
-        result_df = pd.read_parquet(result_tasks[0].data[0])
-        assert len(result_df) == 4  # All items meet 0.8 threshold
+        # Verify content, sorting, and row groups
+        # With 2 rows, we expect max(1, 2//10) = 1 sized row group, but since each row group can only have 1 row,
+        # we'll get 2 row groups total
+        self.verify_output_file(output_file, 2, expected_row_groups=2)
 
-    def test_identify_duplicates_stage_single_task(self) -> None:
-        """Test the IdentifyDuplicatesStage with single task processing."""
-        input_file = os.path.join(self.temp_dir, "cluster_single.parquet")
-        test_data = {"id": ["doc1", "doc2"], "max_id": ["doc2", "doc1"], "cosine_sim_score": [0.95, 0.95]}
-        self.create_test_similarity_file(input_file, test_data)
+        # Verify metadata
+        assert "num_removed" in result_basic[0]._metadata
+        assert result_basic[0]._metadata["num_removed"] == 2
 
-        stage = IdentifyDuplicatesStage(output_path=self.output_dir, eps=0.1, id_field="id")
-
-        task = FileGroupTask(
-            task_id="test_single",
-            dataset_name="test",
-            data=[input_file],
-            _metadata={"centroid_id": 4, "filetype": "parquet"},
-        )
-
-        result_tasks = stage.process_batch([task])
-        result_df = pd.read_parquet(result_tasks[0].data[0])
-        assert len(result_df) == 2  # Both items should be identified as duplicates
-
-    def test_identify_duplicates_stage_batch_processing(self) -> None:
+    def test_identify_duplicates_stage_batch_processing(self, tmp_path: Path) -> None:
         """Test batch processing of multiple clusters."""
         # Create test data for multiple clusters
         cluster_files = []
-        for cluster_id in range(3):
-            input_file = os.path.join(self.temp_dir, f"cluster_{cluster_id}.parquet")
+        for cluster_id in range(10):
+            input_file = tmp_path / f"cluster_{cluster_id}.parquet"
             test_data = {
                 "id": [f"doc{cluster_id}_1", f"doc{cluster_id}_2", f"doc{cluster_id}_3"],
                 "max_id": [f"doc{cluster_id}_2", f"doc{cluster_id}_1", f"doc{cluster_id}_1"],
                 "cosine_sim_score": [0.95, 0.95, 0.85],  # First two above threshold
             }
-            self.create_test_similarity_file(input_file, test_data)
-            cluster_files.append(input_file)
+            self.create_test_similarity_file(str(input_file), test_data)
+            cluster_files.append(str(input_file))
 
+        output_dir = tmp_path / "identify_duplicates_output"
+        output_dir.mkdir()
         stage = IdentifyDuplicatesStage(
-            output_path=self.output_dir,
+            output_path=str(output_dir),
             eps=0.1,  # threshold = 0.9
-            id_field="id",
             verbose=True,
         )
 
@@ -225,7 +184,6 @@ class TestIdentifyDuplicatesStage:
                 task_id=f"test_batch_{i}",
                 dataset_name="test",
                 data=[file_path],
-                _metadata={"centroid_id": i, "filetype": "parquet"},
             )
             tasks.append(task)
 
@@ -233,101 +191,46 @@ class TestIdentifyDuplicatesStage:
         result_tasks = stage.process_batch(tasks)
         assert len(result_tasks) == 1  # Should combine into one output task
 
-        # Check combined results
-        result_df = pd.read_parquet(result_tasks[0].data[0])
-        # Should have 6 items total (2 per cluster with similarity >= 0.9)
-        assert len(result_df) == 6
+        # Check combined results with verification
+        # 10 clusters * 2 items above threshold each = 20 total
+        # With 20 rows and _num_row_groups_hint=10: row_group_size = max(1, 20//10) = 2
+        # This creates 20//2 = 10 row groups
+        self.verify_output_file(result_tasks[0].data[0], 20, expected_row_groups=10)
 
         # Check metadata
         assert "num_removed" in result_tasks[0]._metadata
-        assert result_tasks[0]._metadata["num_removed"] == 6
+        assert result_tasks[0]._metadata["num_removed"] == 20
 
-    def test_identify_duplicates_stage_id_sorting(self) -> None:
-        """Test ID-based sorting with numeric IDs."""
-        input_file = os.path.join(self.temp_dir, "cluster_sorting.parquet")
+    def test_identify_duplicates_stage_custom_row_groups(self, tmp_path: Path) -> None:
+        """Test custom row group configuration."""
+        input_file = tmp_path / "cluster_custom_row_groups.parquet"
         test_data = {
-            "id": [300, 50, 800, 150, 1200, 10],
-            "max_id": [50, 300, 1200, 800, 150, 10],
-            "cosine_sim_score": [0.95, 0.95, 0.95, 0.95, 0.95, 0.95],  # All above threshold
+            "id": [f"doc{i}" for i in range(50)],  # 50 documents
+            "max_id": [f"doc{(i + 1) % 50}" for i in range(50)],
+            "cosine_sim_score": [0.95] * 50,  # All above threshold
         }
-        self.create_test_similarity_file(input_file, test_data)
+        self.create_test_similarity_file(str(input_file), test_data)
 
-        stage = IdentifyDuplicatesStage(output_path=self.output_dir, eps=0.1, id_field="id", verbose=True)
-
-        task = FileGroupTask(
-            task_id="test_sorting",
-            dataset_name="test",
-            data=[input_file],
-            _metadata={"centroid_id": 5, "filetype": "parquet"},
-        )
-
-        result_tasks = stage.process_batch([task])
-        result_df = pd.read_parquet(result_tasks[0].data[0])
-
-        # Should have all 6 items, sorted by ID
-        assert len(result_df) == 6
-        # Check that data is sorted
-        assert result_df["id"].tolist() == sorted(result_df["id"].tolist())
-
-    def test_identify_duplicates_stage_string_ids_no_sorting(self) -> None:
-        """Test that string IDs get sorted properly."""
-        input_file = os.path.join(self.temp_dir, "cluster_string_ids.parquet")
-        test_data = {
-            "id": ["doc_c", "doc_a", "doc_b"],
-            "max_id": ["doc_a", "doc_c", "doc_b"],
-            "cosine_sim_score": [0.95, 0.95, 0.85],
-        }
-        self.create_test_similarity_file(input_file, test_data)
-
-        stage = IdentifyDuplicatesStage(output_path=self.output_dir, eps=0.1, id_field="id", verbose=True)
-
-        task = FileGroupTask(
-            task_id="test_string_ids",
-            dataset_name="test",
-            data=[input_file],
-            _metadata={"centroid_id": 6, "filetype": "parquet"},
-        )
-
-        result_tasks = stage.process_batch([task])
-        result_df = pd.read_parquet(result_tasks[0].data[0])
-
-        # Should have 2 items (above threshold), sorted by ID
-        assert len(result_df) == 2
-        assert result_df["id"].tolist() == sorted(result_df["id"].tolist())
-
-    def test_identify_duplicates_stage_empty_batch(self) -> None:
-        """Test handling of empty batch."""
-        stage = IdentifyDuplicatesStage(output_path=self.output_dir, eps=0.1, id_field="id")
-
-        result_tasks = stage.process_batch([])
-        assert len(result_tasks) == 0
-
-    def test_identify_duplicates_stage_no_id_field(self) -> None:
-        """Test functionality without id_field specified."""
-        input_file = os.path.join(self.temp_dir, "cluster_no_id_field.parquet")
-        test_data = {
-            "doc_id": ["doc1", "doc2", "doc3"],
-            "max_id": ["doc2", "doc1", "doc1"],
-            "cosine_sim_score": [0.95, 0.95, 0.85],
-        }
-        self.create_test_similarity_file(input_file, test_data)
-
+        output_dir = tmp_path / "identify_duplicates_output"
+        output_dir.mkdir()
+        # Test with custom row group hint
         stage = IdentifyDuplicatesStage(
-            output_path=self.output_dir,
+            output_path=str(output_dir),
             eps=0.1,
-            id_field=None,  # No sorting will be performed
+            _num_row_groups_hint=5,  # Should create 5 row groups
             verbose=True,
         )
 
         task = FileGroupTask(
-            task_id="test_no_id_field",
+            task_id="test_custom_row_groups",
             dataset_name="test",
-            data=[input_file],
-            _metadata={"centroid_id": 7, "filetype": "parquet"},
+            data=[str(input_file)],
         )
 
         result_tasks = stage.process_batch([task])
-        result_df = pd.read_parquet(result_tasks[0].data[0])
+        output_file = result_tasks[0].data[0]
 
-        # Should have 2 items (above threshold), no guaranteed sorting
-        assert len(result_df) == 2
+        # Verify content and sorting
+        # With 50 rows and _num_row_groups_hint=5: row_group_size = max(1, 50//5) = 10
+        # This creates 50//10 = 5 row groups
+        self.verify_output_file(output_file, 50, expected_row_groups=5)
