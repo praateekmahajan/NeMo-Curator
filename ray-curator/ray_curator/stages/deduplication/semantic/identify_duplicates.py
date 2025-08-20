@@ -33,7 +33,6 @@ class IdentifyDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTask]):
     eps: float
 
     # Optional ID parameters
-    id_field: str | None = None
     _num_row_groups_hint: int | None = None
 
     # Optional parameters
@@ -92,8 +91,7 @@ class IdentifyDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTask]):
             engine="pyarrow",
         )
         # Write out sorted and with multiple row groups
-        if self.id_field is not None:
-            df.sort_values(self.id_field, inplace=True)  # noqa: PD002
+        df.sort_values("id", inplace=True)  # noqa: PD002
 
         output_file = os.path.join(
             self.output_path, writer_utils.get_deterministic_hash(all_files, tasks[0].task_id) + ".parquet"
