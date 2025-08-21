@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+# ruff: noqa:E402
 import glob
 import os
 import random
@@ -24,6 +24,7 @@ import pytest
 import torch
 from sklearn.datasets import make_blobs
 
+cupy = pytest.importorskip("cupy")
 from ray_curator.stages.deduplication.semantic import SemanticDeduplicationPipeline
 
 
