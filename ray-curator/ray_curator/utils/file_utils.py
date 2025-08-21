@@ -49,10 +49,7 @@ def is_not_empty(
 def delete_dir(
     path: str, fs: fsspec.AbstractFileSystem | None = None, storage_options: dict[str, str] | None = None
 ) -> None:
-    if fs is None and storage_options is None:
-        err_msg = "fs or storage_options must be provided"
-        raise ValueError(err_msg)
-    elif fs is not None and storage_options is not None:
+    if fs is not None and storage_options is not None:
         err_msg = "fs and storage_options cannot be provided together"
         raise ValueError(err_msg)
     elif fs is None:
@@ -60,6 +57,26 @@ def delete_dir(
 
     if fs.exists(path) and fs.isdir(path):
         fs.rm(path, recursive=True)
+
+
+def create_or_overwrite_dir(
+    path: str, fs: fsspec.AbstractFileSystem | None = None, storage_options: dict[str, str] | None = None
+) -> None:
+    """
+    Creates a directory if it does not exist and overwrites it if it does.
+    Warning: This function will delete all files in the directory if it exists.
+    """
+    if fs is not None and storage_options is not None:
+        err_msg = "fs and storage_options cannot be provided together"
+        raise ValueError(err_msg)
+    elif fs is None:
+        fs = get_fs(path, storage_options)
+
+    if is_not_empty(path, fs):
+        logger.warning(f"Output directory {path} is not empty. Deleting it.")
+        delete_dir(path, fs)
+
+    fs.mkdirs(path, exist_ok=True)
 
 
 def filter_files_by_extension(
