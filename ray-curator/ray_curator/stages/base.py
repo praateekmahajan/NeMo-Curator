@@ -86,35 +86,6 @@ class ProcessingStage(ABC, Generic[X, Y], metaclass=StageMeta):
     _resources = Resources(cpus=1.0)
     _batch_size = 1
 
-    # --- Custom per-stage metrics helpers ---
-    def _ensure_metrics_dict(self) -> None:
-        if not hasattr(self, "_custom_metrics") or self._custom_metrics is None:
-            self._custom_metrics: dict[str, float] = {}
-
-    def record_metric(self, name: str, value: float) -> None:
-        """Record a custom metric for this stage (e.g., sub-stage timings)."""
-        self._ensure_metrics_dict()
-        try:
-            self._custom_metrics[name] = float(value)
-        except Exception:  # noqa: BLE001
-            # Best-effort; avoid breaking processing due to metrics
-            from loguru import logger as _metrics_logger
-
-            _metrics_logger.warning(f"Failed to record metric {name} with value {value}")
-
-    def record_metrics(self, mapping: dict[str, float]) -> None:
-        """Record multiple custom metrics at once."""
-        self._ensure_metrics_dict()
-        for k, v in mapping.items():
-            self.record_metric(k, v)
-
-    def consume_custom_metrics(self) -> dict[str, float]:
-        """Return and clear metrics recorded during the last process call."""
-        self._ensure_metrics_dict()
-        metrics = dict(self._custom_metrics)
-        self._custom_metrics.clear()
-        return metrics
-
     @property
     def name(self) -> str:
         return self._name
@@ -311,6 +282,26 @@ class ProcessingStage(ABC, Generic[X, Y], metaclass=StageMeta):
             Dictionary containing Ray-specific configuration
         """
         return {}
+
+    # --- Custom per-stage metrics helpers ---
+    def _record_metrics(self, mapping: dict[str, float]) -> None:
+        """Record custom metrics for this stage (e.g., sub-stage timings)."""
+        if not hasattr(self, "_custom_metrics") or self._custom_metrics is None:
+            self._custom_metrics = {}
+        for name, value in mapping.items():
+            if isinstance(value, (int, float)):
+                self._custom_metrics[name] = float(value)
+            else:
+                msg = f"Can't record non-numeric metric {name} value={value!r}"
+                raise TypeError(msg)
+
+    def _consume_custom_metrics(self) -> dict[str, float]:
+        """Return and clear metrics recorded during the last process call."""
+        if not hasattr(self, "_custom_metrics") or self._custom_metrics is None:
+            self._custom_metrics = {}
+        metrics: dict[str, float] = dict(self._custom_metrics)
+        self._custom_metrics.clear()
+        return metrics
 
 
 class CompositeStage(ProcessingStage[X, Y], ABC):

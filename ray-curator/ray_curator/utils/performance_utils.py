@@ -70,6 +70,17 @@ class StagePerfStats:
         """Convert the stats to a dictionary."""
         return attrs.asdict(self)
 
+    def items(self) -> dict[str, float | int]:
+        """Return a dictionary of the stats.
+        If custom_stats are present, they are flattened into the format <stage_name>.<custom_stat_name>
+        """
+        res = self.to_dict()
+        res.pop("stage_name")
+        # flatten custom_stats
+        for key, value in self.custom_stats.items():
+            res[f"{self.stage_name}.{key}"] = value
+        return res
+
 
 class StageTimer:
     """Tracker for stage performance stats.
@@ -154,69 +165,3 @@ class StageTimer:
             num_items_processed=num_items,
         )
         return self._stage_name, stage_perf_stats
-
-
-class StagePerfUtils:
-    """Utilities for aggregating stage performance metrics from tasks.
-
-    Example output format:
-    {
-        "StageA": {"process_time": [...], "actor_idle_time": [...], "read_time_s": [...], ...},
-        "StageB": {"process_time": [...], ...}
-    }
-    """
-
-    @staticmethod
-    def collect_stage_metrics(tasks: list[object]) -> dict[str, dict[str, list[float]]]:
-        """Collect per-stage metric lists from a list of tasks.
-
-        The returned mapping aggregates both built-in StagePerfStats metrics and any
-        custom_stats recorded by stages.
-
-        Args:
-            tasks: Iterable of tasks, each having a `_stage_perf: list[StagePerfStats]` attribute.
-
-        Returns:
-            Dict mapping stage_name -> metric_name -> list of numeric values.
-        """
-        stage_to_metrics: dict[str, dict[str, list[float]]] = {}
-
-        for task in tasks or []:
-            perfs = getattr(task, "_stage_perf", []) or []
-            for perf in perfs:
-                stage_name = getattr(perf, "stage_name", "unknown")
-
-                if stage_name not in stage_to_metrics:
-                    stage_to_metrics[stage_name] = {}
-
-                metrics_dict = stage_to_metrics[stage_name]
-
-                # Built-in metrics
-                StagePerfUtils._append(metrics_dict, "process_time", float(getattr(perf, "process_time", 0.0)))
-                StagePerfUtils._append(metrics_dict, "actor_idle_time", float(getattr(perf, "actor_idle_time", 0.0)))
-                StagePerfUtils._append(
-                    metrics_dict, "input_data_size_mb", float(getattr(perf, "input_data_size_mb", 0.0))
-                )
-                # Preserve int semantics but store as float for uniformity
-                StagePerfUtils._append(
-                    metrics_dict, "num_items_processed", float(getattr(perf, "num_items_processed", 0))
-                )
-
-                # Custom stats
-                custom = getattr(perf, "custom_stats", {}) or {}
-                for key, value in custom.items():
-                    # best-effort cast to float
-                    try:
-                        v = float(value)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.debug(f"Skipping custom metric {key} with value {value}: {exc}")
-                        continue
-                    StagePerfUtils._append(metrics_dict, key, v)
-
-        return stage_to_metrics
-
-    @staticmethod
-    def _append(metrics_dict: dict[str, list[float]], key: str, value: float) -> None:
-        if key not in metrics_dict:
-            metrics_dict[key] = []
-        metrics_dict[key].append(value)
