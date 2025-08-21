@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 from pathlib import Path
 
 import fsspec
 from fsspec.core import get_filesystem_class, split_protocol
+from loguru import logger
 
 FILETYPE_TO_DEFAULT_EXTENSIONS = {
     "parquet": [".parquet"],
@@ -78,7 +78,7 @@ def filter_files_by_extension(
             filtered_files.append(file)
 
     if len(files_list) != len(filtered_files):
-        warnings.warn("Skipped at least one file due to unmatched file extension(s).", stacklevel=2)
+        logger.warning("Skipped at least one file due to unmatched file extension(s).")
 
     return filtered_files
 
@@ -125,3 +125,29 @@ def infer_dataset_name_from_path(path: str) -> str:
         if len(path_parts) <= 1:
             return path_parts[0]
         return path_parts[-1].lower()
+
+
+def check_disllowed_kwargs(
+    kwargs: dict,
+    disllowed_keys: list[str],
+    raise_error: bool = True,
+) -> None:
+    """Check if any of the disllowed keys are in provided kwargs
+    Used for read/write kwargs in stages.
+    Args:
+        kwargs: The dictionary to check
+        disllowed_keys: The keys that are not allowed.
+        raise_error: Whether to raise an error if any of the disllowed keys are in the kwargs.
+    Raises:
+        ValueError: If any of the disllowed keys are in the kwargs and raise_error is True.
+        Warning: If any of the disllowed keys are in the kwargs and raise_error is False.
+    Returns:
+        None
+    """
+    found_keys = set(kwargs).intersection(disllowed_keys)
+    if raise_error and found_keys:
+        msg = f"Unsupported keys in kwargs: {', '.join(found_keys)}"
+        raise ValueError(msg)
+    elif found_keys:
+        msg = f"Unsupported keys in kwargs: {', '.join(found_keys)}"
+        logger.warning(msg)

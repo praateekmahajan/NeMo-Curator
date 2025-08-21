@@ -36,7 +36,6 @@ from .utils import break_parquet_partition_into_groups, get_array_from_df
 
 def pairwise_cosine_similarity_batched(
     cluster_reps: "torch.Tensor",
-    device: Literal["cuda", "cpu"],
     batch_size: int = 1024,
 ) -> tuple["cp.ndarray", "cp.ndarray"] | tuple[np.ndarray, np.ndarray]:
     """
@@ -50,6 +49,7 @@ def pairwise_cosine_similarity_batched(
 
     TODO: In future we can estimate memory requirement and calculate batch size dynamically.
     """
+    device = "cuda"
 
     cluster_reps = cluster_reps.to(device)
     max_similarity = torch.zeros(cluster_reps.shape[0], dtype=torch.float32, device=device)
@@ -214,9 +214,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[FileGroupTask, FileGroupTask
         ids = ranked_metadata_df[self.id_field]
 
         # Compute pairwise similarities
-        max_similarity, max_indices = pairwise_cosine_similarity_batched(
-            cluster_embeddings, "cuda", self.pairwise_batch_size
-        )
+        max_similarity, max_indices = pairwise_cosine_similarity_batched(cluster_embeddings, self.pairwise_batch_size)
 
         # Convert indices back to IDs
         max_indices_id = ids.iloc[max_indices].reset_index(drop=True)

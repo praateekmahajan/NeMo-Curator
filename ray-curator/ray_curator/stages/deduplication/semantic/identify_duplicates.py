@@ -18,15 +18,17 @@ from typing import Any
 
 import pandas as pd
 
-import ray_curator.stages.text.io.writer.utils as writer_utils
 from ray_curator.stages.base import ProcessingStage
-from ray_curator.stages.resources import Resources
+from ray_curator.stages.text.io.writer.utils import get_deterministic_hash
 from ray_curator.tasks import FileGroupTask
+from ray_curator.utils.file_utils import check_disllowed_kwargs
 
 
 @dataclass
 class IdentifyDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTask]):
-    """Stage for batch removal of similar documents with optional ID-based partitioning."""
+    """Stage for batch removal of similar documents with optional ID-based partitioning.
+    It is a CPU-only stage.
+    """
 
     # Required parameters
     output_path: str
@@ -45,14 +47,18 @@ class IdentifyDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTask]):
         super().__init__()
         self._name = "RemovalStage"
 
-        self._resources = Resources(cpus=1.0, gpus=0.0)  # CPU-only stage for maximal parallelism
         self._batch_size = 10  # We want to load multiple clusters at once
 
         # Storage options
-        self.read_kwargs = self.read_kwargs if self.read_kwargs is not None else {}
-        self.write_kwargs = self.write_kwargs if self.write_kwargs is not None else {}
+        self.read_kwargs = self.read_kwargs.copy() if self.read_kwargs is not None else {}
+        self.write_kwargs = self.write_kwargs.copy() if self.write_kwargs is not None else {}
+
+        check_disllowed_kwargs(self.read_kwargs, ["filters", "engine"])
+        check_disllowed_kwargs(self.write_kwargs, ["index", "row_group_size"])
+
         self.input_storage_options = self.read_kwargs.pop("storage_options", None) if self.read_kwargs else None
         self.output_storage_options = self.write_kwargs.pop("storage_options", None) if self.write_kwargs else None
+
         # break each file into 10 row groups by default
         self._num_row_groups_hint = self._num_row_groups_hint if self._num_row_groups_hint is not None else 10
 
@@ -93,9 +99,7 @@ class IdentifyDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTask]):
         # Write out sorted and with multiple row groups
         df.sort_values("id", inplace=True)  # noqa: PD002
 
-        output_file = os.path.join(
-            self.output_path, writer_utils.get_deterministic_hash(all_files, tasks[0].task_id) + ".parquet"
-        )
+        output_file = os.path.join(self.output_path, get_deterministic_hash(all_files, tasks[0].task_id) + ".parquet")
 
         df.to_parquet(
             output_file,
@@ -108,7 +112,7 @@ class IdentifyDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTask]):
         # Create output task
         return [
             FileGroupTask(
-                task_id=f"identify_duplicates_{writer_utils.get_deterministic_hash(all_files, tasks[0].task_id)}",
+                task_id=f"identify_duplicates_{get_deterministic_hash(all_files, tasks[0].task_id)}",
                 dataset_name=tasks[0].dataset_name,
                 data=[output_file],
                 _metadata={**tasks[0]._metadata, "num_removed": len(df)},
