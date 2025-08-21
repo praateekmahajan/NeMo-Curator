@@ -127,9 +127,9 @@ def infer_dataset_name_from_path(path: str) -> str:
         return path_parts[-1].lower()
 
 
-def check_disllowed_kwargs(
+def check_disallowed_kwargs(
     kwargs: dict,
-    disllowed_keys: list[str],
+    disallowed_keys: list[str],
     raise_error: bool = True,
 ) -> None:
     """Check if any of the disllowed keys are in provided kwargs
@@ -144,7 +144,7 @@ def check_disllowed_kwargs(
     Returns:
         None
     """
-    found_keys = set(kwargs).intersection(disllowed_keys)
+    found_keys = set(kwargs).intersection(disallowed_keys)
     if raise_error and found_keys:
         msg = f"Unsupported keys in kwargs: {', '.join(found_keys)}"
         raise ValueError(msg)

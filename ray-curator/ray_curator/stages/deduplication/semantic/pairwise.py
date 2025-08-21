@@ -28,7 +28,7 @@ from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
 from ray_curator.stages.deduplication.io_utils import DeduplicationIO
 from ray_curator.stages.resources import Resources
 from ray_curator.tasks import FileGroupTask, _EmptyTask
-from ray_curator.utils.file_utils import check_disllowed_kwargs
+from ray_curator.utils.file_utils import check_disallowed_kwargs
 
 from .pairwise_io import ClusterWiseFilePartitioningStage
 from .ranking import RankingStrategy
@@ -109,8 +109,8 @@ class PairwiseCosineSimilarityStage(ProcessingStage[FileGroupTask, FileGroupTask
         self.verbose = verbose
         self.read_kwargs = read_kwargs.copy() if read_kwargs is not None else {}
         self.write_kwargs = write_kwargs.copy() if write_kwargs is not None else {}
-        check_disllowed_kwargs(self.read_kwargs, ["columns", "assign_id"])
-        check_disllowed_kwargs(self.write_kwargs, ["index"])
+        check_disallowed_kwargs(self.read_kwargs, ["columns", "assign_id"])
+        check_disallowed_kwargs(self.write_kwargs, ["index"])
         self.input_storage_options = self.read_kwargs.pop("storage_options", None) if self.read_kwargs else None
         self.output_storage_options = self.write_kwargs.pop("storage_options", None) if self.write_kwargs else None
         self._name = "PairwiseCosineSimilarityStage"
