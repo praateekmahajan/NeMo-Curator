@@ -70,6 +70,16 @@ class BaseStageAdapter:
 
         # Log performance stats and add to result tasks
         _, stage_perf_stats = self._timer.log_stats()
+        # Attach any custom metrics recorded by the stage during this call
+        if hasattr(self.stage, "consume_custom_metrics") and hasattr(stage_perf_stats, "custom_stats"):
+            try:
+                custom_metrics = self.stage.consume_custom_metrics()
+                if custom_metrics:
+                    stage_perf_stats.custom_stats.update(custom_metrics)
+            except Exception as exc:  # noqa: BLE001
+                from loguru import logger as _adapter_logger
+
+                _adapter_logger.debug(f"Failed to attach custom metrics: {exc}")
         for task in results:
             task.add_stage_perf(stage_perf_stats)
 
