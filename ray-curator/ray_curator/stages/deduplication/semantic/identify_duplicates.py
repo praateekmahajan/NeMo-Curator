@@ -90,6 +90,10 @@ class IdentifyDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTask]):
             filters=[("cosine_sim_score", ">=", 1.0 - self.eps)],
             engine="pyarrow",
         )[["id"]]  # TODO: If we want we can add other columns
+
+        # Ensure id column is integer type
+        df["id"] = pd.to_numeric(df["id"], errors="coerce").astype("int64")
+
         # Write out sorted and with multiple row groups
         df.sort_values("id", inplace=True)  # noqa: PD002
 
