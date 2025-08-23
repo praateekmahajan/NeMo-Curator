@@ -66,7 +66,10 @@ def create_or_overwrite_dir(
     Creates a directory if it does not exist and overwrites it if it does.
     Warning: This function will delete all files in the directory if it exists.
     """
-    if fs is not None and storage_options is not None:
+    if fs is None and storage_options is None:
+        err_msg = "fs or storage_options must be provided"
+        raise ValueError(err_msg)
+    elif fs is not None and storage_options is not None:
         err_msg = "fs and storage_options cannot be provided together"
         raise ValueError(err_msg)
     elif fs is None:
@@ -149,15 +152,15 @@ def check_disallowed_kwargs(
     disallowed_keys: list[str],
     raise_error: bool = True,
 ) -> None:
-    """Check if any of the disllowed keys are in provided kwargs
+    """Check if any of the disallowed keys are in provided kwargs
     Used for read/write kwargs in stages.
     Args:
         kwargs: The dictionary to check
-        disllowed_keys: The keys that are not allowed.
-        raise_error: Whether to raise an error if any of the disllowed keys are in the kwargs.
+        disallowed_keys: The keys that are not allowed.
+        raise_error: Whether to raise an error if any of the disallowed keys are in the kwargs.
     Raises:
-        ValueError: If any of the disllowed keys are in the kwargs and raise_error is True.
-        Warning: If any of the disllowed keys are in the kwargs and raise_error is False.
+        ValueError: If any of the disallowed keys are in the kwargs and raise_error is True.
+        Warning: If any of the disallowed keys are in the kwargs and raise_error is False.
     Returns:
         None
     """
