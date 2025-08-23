@@ -41,9 +41,9 @@ from ray_curator.stages.deduplication.semantic.ranking import RankingStrategy
 from ray_curator.utils.file_utils import create_or_overwrite_dir
 
 
-class SemanticDeduplicationPipeline:
+class SemanticDeduplicationWorkflow:
     """
-    End-to-End Semantic Deduplication Pipeline.
+    End-to-End Semantic Deduplication Workflow.
 
     K-means stage always runs on RayActorPoolExecutor.
     Pairwise + duplicate identification runs on configurable executor.
@@ -74,10 +74,9 @@ class SemanticDeduplicationPipeline:
         which_to_keep: Literal["hard", "easy", "random"] = "hard",
         ranking_strategy: RankingStrategy | None = None,
         pairwise_batch_size: int = 1024,
-        limit: int | None = None,
         # Duplicate identification parameters (optional)
         eps: float | None = None,
-        num_row_groups_hint: int | None = None,
+        _duplicates_num_row_groups_hint: int | None = None,
         # I/O and storage parameters
         read_kwargs: dict[str, Any] | None = None,
         write_kwargs: dict[str, Any] | None = None,
@@ -85,18 +84,22 @@ class SemanticDeduplicationPipeline:
         verbose: bool = True,
     ):
         """
-        Initialize the semantic deduplication pipeline.
+        Initialize the semantic deduplication workflow.
 
         Args:
             input_path: Directory or list of directories containing input files with embeddings
             output_path: Directory to write output files
             n_clusters: Number of clusters for K-means
+
+            # Core data configuration
             id_field: Name of the ID field in the data
             embedding_field: Name of the embedding field in the data
             embedding_dim: Embedding dimension (for memory estimation)
             metadata_fields: List of metadata field names to preserve in output
             input_filetype: Type of input files ("parquet" or "jsonl")
             input_file_extensions: List of file extensions to process
+
+            # K-means clustering parameters
             max_iter: Maximum number of K-means iterations
             tol: Tolerance for K-means convergence
             random_state: Random seed for K-means
@@ -105,14 +108,20 @@ class SemanticDeduplicationPipeline:
             oversampling_factor: K-means++ oversampling factor
             max_samples_per_batch: Max samples per batch for K-means
             distance_metric: Distance metric for similarity ("cosine" or "l2")
+
+            # Pairwise similarity parameters
             which_to_keep: Strategy for ranking within clusters ("hard", "easy", "random")
             ranking_strategy: Custom ranking strategy (overrides which_to_keep)
             pairwise_batch_size: Batch size for pairwise similarity computation
-            limit: Limit number of documents to process (for debugging)
+
+            # Duplicate identification parameters (optional)
             eps: Epsilon value for duplicate identification
-            num_row_groups_hint: Number of row groups hint for duplicate removal
+            _duplicates_num_row_groups_hint: Number of row groups hint for duplicate removal
+
+            # I/O and storage parameters
             read_kwargs: Keyword arguments for reading files (including storage_options)
             write_kwargs: Keyword arguments for writing files (including storage_options)
+            # Execution parameters
             verbose: Enable verbose output
             clear_output: Clear output directory before running
         """
@@ -149,11 +158,10 @@ class SemanticDeduplicationPipeline:
         self.which_to_keep = which_to_keep
         self.ranking_strategy = ranking_strategy
         self.pairwise_batch_size = pairwise_batch_size
-        self.limit = limit
 
         # Duplicate identification parameters
         self.eps = eps
-        self.num_row_groups_hint = num_row_groups_hint
+        self._duplicates_num_row_groups_hint = _duplicates_num_row_groups_hint
 
         # I/O parameters
         self.read_kwargs = read_kwargs.copy() if read_kwargs else {}
@@ -254,9 +262,11 @@ class SemanticDeduplicationPipeline:
             which_to_keep=self.which_to_keep,
             sim_metric=self.distance_metric,
             random_seed=self.random_state,
-            limit=self.limit,
-            read_kwargs=self.write_kwargs,
-            write_kwargs=self.write_kwargs,
+            # Since we use the output of KMeans we don't need to pass any read_kwargs which were
+            # passed to the KMeans stage.
+            # We do need to pass the storage_options to the Pairwise stage.
+            read_kwargs={**self.write_kwargs.get("storage_options", {})},
+            write_kwargs={**self.write_kwargs.get("storage_options", {})},
         )
         pipeline.add_stage(pairwise_stage)
 
@@ -265,7 +275,7 @@ class SemanticDeduplicationPipeline:
             identify_duplicates_stage = IdentifyDuplicatesStage(
                 output_path=self.duplicates_output_path,
                 eps=self.eps,
-                _num_row_groups_hint=self.num_row_groups_hint,
+                _num_row_groups_hint=self._duplicates_num_row_groups_hint,
                 verbose=self.verbose,
                 read_kwargs=self.write_kwargs,
                 write_kwargs=self.write_kwargs,
@@ -275,9 +285,9 @@ class SemanticDeduplicationPipeline:
         return pipeline.run(pairwise_executor)
 
     def _log_configuration(self, pairwise_executor: BaseExecutor | None = None) -> None:
-        """Log pipeline configuration."""
+        """Log workflow configuration."""
         logger.info("=" * 60)
-        logger.info("SEMANTIC DEDUPLICATION PIPELINE CONFIGURATION")
+        logger.info("SEMANTIC DEDUPLICATION WORKFLOW CONFIGURATION")
         logger.info("=" * 60)
         logger.info(f"Input path: {self.input_path}")
         logger.info(f"Output path: {self.output_path}")

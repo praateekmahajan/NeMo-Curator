@@ -25,12 +25,12 @@ import torch
 from sklearn.datasets import make_blobs
 
 cupy = pytest.importorskip("cupy")
-from ray_curator.stages.deduplication.semantic import SemanticDeduplicationPipeline
+from ray_curator.stages.deduplication.semantic import SemanticDeduplicationWorkflow
 
 
 @pytest.mark.gpu
-class TestSemanticDeduplicationPipeline:
-    """Test the SemanticDeduplicationPipeline against the same data and expectations as the original Dask-based test."""
+class TestSemanticDeduplicationWorkflow:
+    """Test the SemanticDeduplicationWorkflow against the same data and expectations as the original Dask-based test."""
 
     def setup_method(self) -> None:
         """Setup method that creates the same synthetic data as the original test."""
@@ -95,9 +95,9 @@ class TestSemanticDeduplicationPipeline:
         # Create input parquet files
         self._create_input_parquet_files(input_dir)
 
-        # Create and run pipeline with duplicate identification
+        # Create and run workflow with duplicate identification
         # Using eps=0.01 to match the original test
-        pipeline = SemanticDeduplicationPipeline(
+        pipeline = SemanticDeduplicationWorkflow(
             input_path=input_dir,
             output_path=output_dir,
             n_clusters=self.n_clusters,
