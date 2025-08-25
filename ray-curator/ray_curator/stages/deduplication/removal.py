@@ -30,7 +30,6 @@ import pandas as pd
 
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
-from ray_curator.stages.resources import Resources
 from ray_curator.tasks import DocumentBatch
 
 
@@ -57,13 +56,7 @@ class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     def __post_init__(self):
         """Initialize parent class after dataclass initialization."""
         super().__init__()
-        self._name = "RemovalStage"
-
-        # CPU-only stage for maximal parallelism
-        self._resources = Resources(cpus=1.0, gpus=0.0)
-        self._batch_size = 1  # Process one batch at a time
-
-        # Storage options
+        self._name = "DuplicatesRemovalStage"
         self.read_kwargs = self.read_kwargs if self.read_kwargs is not None else {}
 
     def process(self, task: DocumentBatch) -> DocumentBatch:
