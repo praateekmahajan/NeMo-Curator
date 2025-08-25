@@ -35,7 +35,7 @@ from ray_curator.tasks import DocumentBatch
 
 
 @dataclass
-class RemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
+class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     """
     Stage for removing duplicate documents based on pre-computed removal lists.
 

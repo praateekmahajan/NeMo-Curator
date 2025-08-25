@@ -14,8 +14,8 @@
 
 """Deduplication stages for Ray Curator."""
 
-from .removal import RemovalStage
+from .removal import DuplicatesRemovalStage
 
 __all__ = [
-    "RemovalStage",
+    "DuplicatesRemovalStage",
 ]
