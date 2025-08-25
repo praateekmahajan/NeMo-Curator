@@ -303,7 +303,7 @@ class ProcessingStage(ABC, Generic[X, Y], metaclass=StageMeta):
         if not hasattr(self, "_custom_metrics") or self._custom_metrics is None:
             self._custom_metrics = {}
         metrics: dict[str, float] = dict(self._custom_metrics)
-        self._custom_metrics.clear()
+        del self._custom_metrics
         return metrics
 
 
