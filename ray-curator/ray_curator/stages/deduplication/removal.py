@@ -22,10 +22,12 @@ This stage implements the removal phase of the distributed deduplication approac
 4. Returns the filtered DocumentBatch
 """
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
+from loguru import logger
 
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
@@ -68,11 +70,13 @@ class RemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     def process(self, task: DocumentBatch) -> DocumentBatch:
         """Process a DocumentBatch to remove duplicates."""
         df = task.to_pandas()
-
+        input_df_t0 = time.perf_counter()
         min_id = df[self.id_field].min()
         max_id = df[self.id_field].max()
-
+        input_df_time = time.perf_counter() - input_df_t0
+        logger.info(f"Time to get min and max ID: {input_df_time:.2f} seconds")
         # Filter the parquet files for IDs to remove within this range
+        read_dupes_t0 = time.perf_counter()
         removal_df = pd.read_parquet(
             self.ids_to_remove_path,
             filters=[("id", ">=", min_id), ("id", "<=", max_id)],
@@ -80,10 +84,22 @@ class RemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
             **self.read_kwargs,
             storage_options=self.read_kwargs.get("storage_options") if self.read_kwargs else None,
         )
+        read_dupes_time = time.perf_counter() - read_dupes_t0
+        logger.info(f"Time to read dupes : {read_dupes_time:.2f} seconds")
         removal_ids = set(removal_df["id"].tolist())
 
         # Filter out documents with IDs in the removal set using pandas
+        time_to_remove_t0 = time.perf_counter()
         df = df[~df[self.id_field].isin(removal_ids)]
+        time_to_remove_time = time.perf_counter() - time_to_remove_t0
+        logger.info(f"Time to remove duplicates: {time_to_remove_time:.2f} seconds")
+        self._log_metrics(
+            {
+                "input_df_time": input_df_time,
+                "read_dupes_time": read_dupes_time,
+                "time_to_remove_time": time_to_remove_time,
+            }
+        )
 
         # Create output batch with filtered data
         return DocumentBatch(
