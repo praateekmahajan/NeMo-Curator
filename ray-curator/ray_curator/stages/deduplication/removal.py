@@ -80,7 +80,7 @@ class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
             filters=[("id", ">=", min_id), ("id", "<=", max_id)],
             columns=["id"],
             **self.read_kwargs,
-            storage_options=self.read_kwargs.get("storage_options") if self.read_kwargs else None,
+            storage_options=self.read_kwargs.get("storage_options"),
         )
         read_dupes_time = time.perf_counter() - read_dupes_t0
         removal_ids = set(removal_df["id"].tolist())
