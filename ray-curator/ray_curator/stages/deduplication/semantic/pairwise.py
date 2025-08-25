@@ -28,6 +28,7 @@ from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
 from ray_curator.stages.deduplication.io_utils import DeduplicationIO
 from ray_curator.stages.resources import Resources
 from ray_curator.tasks import FileGroupTask, _EmptyTask
+from ray_curator.utils.file_utils import check_disallowed_kwargs
 
 from .pairwise_io import ClusterWiseFilePartitioningStage
 from .ranking import RankingStrategy
@@ -36,7 +37,6 @@ from .utils import break_parquet_partition_into_groups, get_array_from_df
 
 def pairwise_cosine_similarity_batched(
     cluster_reps: "torch.Tensor",
-    device: Literal["cuda", "cpu"],
     batch_size: int = 1024,
 ) -> tuple["cp.ndarray", "cp.ndarray"] | tuple[np.ndarray, np.ndarray]:
     """
@@ -50,6 +50,7 @@ def pairwise_cosine_similarity_batched(
 
     TODO: In future we can estimate memory requirement and calculate batch size dynamically.
     """
+    device = "cuda"
 
     cluster_reps = cluster_reps.to(device)
     max_similarity = torch.zeros(cluster_reps.shape[0], dtype=torch.float32, device=device)
@@ -106,8 +107,10 @@ class PairwiseCosineSimilarityStage(ProcessingStage[FileGroupTask, FileGroupTask
         self.embedding_dim = embedding_dim
         self.ranking_strategy = ranking_strategy
         self.verbose = verbose
-        self.read_kwargs = read_kwargs if read_kwargs is not None else {}
-        self.write_kwargs = write_kwargs if write_kwargs is not None else {}
+        self.read_kwargs = read_kwargs.copy() if read_kwargs is not None else {}
+        self.write_kwargs = write_kwargs.copy() if write_kwargs is not None else {}
+        check_disallowed_kwargs(self.read_kwargs, ["columns", "assign_id"])
+        check_disallowed_kwargs(self.write_kwargs, ["index"])
         self.input_storage_options = self.read_kwargs.pop("storage_options", None) if self.read_kwargs else None
         self.output_storage_options = self.write_kwargs.pop("storage_options", None) if self.write_kwargs else None
         self._name = "PairwiseCosineSimilarityStage"
@@ -214,9 +217,7 @@ class PairwiseCosineSimilarityStage(ProcessingStage[FileGroupTask, FileGroupTask
         ids = ranked_metadata_df[self.id_field]
 
         # Compute pairwise similarities
-        max_similarity, max_indices = pairwise_cosine_similarity_batched(
-            cluster_embeddings, "cuda", self.pairwise_batch_size
-        )
+        max_similarity, max_indices = pairwise_cosine_similarity_batched(cluster_embeddings, self.pairwise_batch_size)
 
         # Convert indices back to IDs
         max_indices_id = ids.iloc[max_indices].reset_index(drop=True)
@@ -232,7 +233,13 @@ class PairwiseCosineSimilarityStage(ProcessingStage[FileGroupTask, FileGroupTask
         )
 
         # Write results
-        self.write_parquet(points_to_remove_df, output_path, storage_options=self.output_storage_options, index=False)
+        self.write_parquet(
+            points_to_remove_df,
+            output_path,
+            storage_options=self.output_storage_options,
+            index=False,
+            **self.write_kwargs,
+        )
 
         t2 = time.perf_counter()
         if self.verbose:
@@ -267,7 +274,6 @@ class PairwiseStage(CompositeStage[_EmptyTask, FileGroupTask]):
     verbose: bool = False
     read_kwargs: dict[str, Any] | None = None
     write_kwargs: dict[str, Any] | None = None
-    limit: int | None = None
     # Ranking (for backward compatibility)
     which_to_keep: Literal["hard", "easy", "random"] = "hard"
     sim_metric: Literal["cosine", "l2"] = "cosine"
