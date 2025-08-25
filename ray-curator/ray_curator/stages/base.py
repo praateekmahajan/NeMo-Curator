@@ -284,16 +284,19 @@ class ProcessingStage(ABC, Generic[X, Y], metaclass=StageMeta):
         return {}
 
     # --- Custom per-stage metrics helpers ---
-    def _record_metrics(self, mapping: dict[str, float]) -> None:
+    def _log_metrics(self, metrics: dict[str, float]) -> None:
         """Record custom metrics for this stage (e.g., sub-stage timings)."""
         if not hasattr(self, "_custom_metrics") or self._custom_metrics is None:
             self._custom_metrics = {}
-        for name, value in mapping.items():
+        for name, value in metrics.items():
             if isinstance(value, (int, float)):
                 self._custom_metrics[name] = float(value)
             else:
-                msg = f"Can't record non-numeric metric {name} value={value!r}"
-                raise TypeError(msg)
+                msg = f"Can't record non-numeric metric {name} value={value} for stage {self.name}"
+                logger.warning(msg)
+
+    def _log_metric(self, name: str, value: float) -> None:
+        return self._log_metrics({name: value})
 
     def _consume_custom_metrics(self) -> dict[str, float]:
         """Return and clear metrics recorded during the last process call."""
