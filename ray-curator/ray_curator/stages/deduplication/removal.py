@@ -40,17 +40,14 @@ class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
 
     Args:
         ids_to_remove_path: Path to parquet files containing IDs to remove
-        verbose: Whether to print verbose output
+        id_field: Field to use for deduplication. Defaults to CURATOR_DEDUP_ID_STR.
         read_kwargs: Additional arguments for reading parquet files
     """
 
-    # Required parameters
     ids_to_remove_path: str
-
     id_field: str = CURATOR_DEDUP_ID_STR
 
     # Optional parameters
-    verbose: bool = False
     read_kwargs: dict[str, Any] | None = None
 
     def __post_init__(self):
@@ -60,7 +57,12 @@ class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
         self.read_kwargs = self.read_kwargs if self.read_kwargs is not None else {}
 
     def process(self, task: DocumentBatch) -> DocumentBatch:
-        """Process a DocumentBatch to remove duplicates."""
+        """
+        Our deduplicator should've written out a parquet file with the IDs to remove.
+        We read that file, filter the input dataframe to only include the IDs to remove,
+        and return the filtered dataframe.
+        We optimize by not loading the whole ids to remove into memory, but only loading the ids that are in the range of the input dataframe.
+        """
         df = task.to_pandas()
         input_df_t0 = time.perf_counter()
         min_id = df[self.id_field].min()
