@@ -129,7 +129,7 @@ class AddLengthStage(ProcessingStage[DocumentBatch, DocumentBatch]):
             )
         t_compute1 = time.perf_counter()
         # Record custom timing metrics for this stage batch
-        self._record_metrics(
+        self._log_metrics(
             {
                 "counter_actor_increment_s": t_actor1 - t_actor0,
                 "compute_len_s": t_compute1 - t_compute0,
@@ -189,7 +189,7 @@ class SplitIntoRowsStage(ProcessingStage[DocumentBatch, DocumentBatch]):
             )
         # Record custom timing for row splitting
         t1 = time.perf_counter()
-        self._record_metrics({"split_into_rows_time_s": t1 - t0})
+        self._log_metric("split_into_rows_time_s", t1 - t0)
         return tasks
 
     def ray_stage_spec(self) -> dict[str, bool]:

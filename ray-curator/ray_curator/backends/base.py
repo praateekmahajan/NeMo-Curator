@@ -73,7 +73,7 @@ class BaseStageAdapter:
         # Consume and attach any custom metrics recorded by the stage during this call
         custom_metrics = self.stage._consume_custom_metrics()
         if custom_metrics:
-            stage_perf_stats.custom_stats.update(custom_metrics)
+            stage_perf_stats.custom_metrics.update(custom_metrics)
         for task in results:
             task.add_stage_perf(stage_perf_stats)
 
