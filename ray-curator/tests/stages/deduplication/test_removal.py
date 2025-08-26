@@ -108,7 +108,9 @@ class TestDuplicatesRemovalStage:
         assert sorted(result_df[CURATOR_DEDUP_ID_STR].tolist()) == [1, 2, 3, 4, 5]
         assert result._metadata["num_removed"] == 0
         # Stage should have custom metrics
-        assert all(stage._custom_metrics[k] > 0 for k in ["input_df_time", "read_dupes_time", "time_to_remove_time"])
+        assert all(
+            stage._custom_metrics[k] > 0 for k in ["input_df_min_max_time", "read_dupes_time", "id_removal_time"]
+        )
 
     @patch("pandas.read_parquet")
     def test_process_with_no_matching_ids(
@@ -126,7 +128,9 @@ class TestDuplicatesRemovalStage:
         assert len(result_df) == 5
         assert sorted(result_df[CURATOR_DEDUP_ID_STR].tolist()) == [1, 2, 3, 4, 5]
         assert result._metadata["num_removed"] == 3  # 3 IDs were in removal list but didn't match
-        assert all(stage._custom_metrics[k] > 0 for k in ["input_df_time", "read_dupes_time", "time_to_remove_time"])
+        assert all(
+            stage._custom_metrics[k] > 0 for k in ["input_df_min_max_time", "read_dupes_time", "id_removal_time"]
+        )
 
     @patch("pandas.read_parquet")
     def test_process_removes_all_documents(
@@ -143,16 +147,18 @@ class TestDuplicatesRemovalStage:
         # Should have 0 documents remaining
         assert len(result_df) == 0
         assert result._metadata["num_removed"] == 5
-        assert all(stage._custom_metrics[k] > 0 for k in ["input_df_time", "read_dupes_time", "time_to_remove_time"])
+        assert all(
+            stage._custom_metrics[k] > 0 for k in ["input_df_min_max_time", "read_dupes_time", "id_removal_time"]
+        )
 
     @patch("pandas.read_parquet")
-    def test_process_with_custom_id_field(self, mock_read_parquet: MagicMock, removal_parquet_file: str):
+    def test_process_with_custom_id_fields(self, mock_read_parquet: MagicMock, removal_parquet_file: str):
         """Test process method with custom ID field."""
         # Create document batch with custom ID field
         df = pd.DataFrame(
             {
                 "text": ["Doc 1", "Doc 2", "Doc 3"],
-                "custom_id": [10, 20, 30],
+                "custom_id": ["id_1", "id_2", "id_3"],
             }
         )
         doc_batch = DocumentBatch(
@@ -162,18 +168,24 @@ class TestDuplicatesRemovalStage:
         )
 
         # Mock the parquet read to return ID 20
-        mock_read_parquet.return_value = pd.DataFrame({"id": [20]})
+        mock_read_parquet.return_value = pd.DataFrame({"dedup_id": ["id_2"]})
 
-        stage = DuplicatesRemovalStage(ids_to_remove_path=removal_parquet_file, id_field="custom_id")
+        stage = DuplicatesRemovalStage(
+            ids_to_remove_path=removal_parquet_file,
+            id_field="custom_id",
+            duplicate_id_field="dedup_id",
+        )
         result = stage.process(doc_batch)
 
         # Verify correct filters were used (min=10, max=30)
         call_args = mock_read_parquet.call_args
-        assert call_args[1]["filters"] == [("id", ">=", 10), ("id", "<=", 30)]
+        assert call_args[1]["filters"] == [("dedup_id", ">=", "id_1"), ("dedup_id", "<=", "id_3")]
 
         result_df = result.to_pandas()
-        # Should have 2 documents remaining (IDs 10, 30)
+        # Should have 2 documents remaining (IDs "id_1", "id_3")
         assert len(result_df) == 2
-        assert sorted(result_df["custom_id"].tolist()) == [10, 30]
+        assert sorted(result_df["custom_id"].tolist()) == ["id_1", "id_3"]
         assert result._metadata["num_removed"] == 1
-        assert all(stage._custom_metrics[k] > 0 for k in ["input_df_time", "read_dupes_time", "time_to_remove_time"])
+        assert all(
+            stage._custom_metrics[k] > 0 for k in ["input_df_min_max_time", "read_dupes_time", "id_removal_time"]
+        )

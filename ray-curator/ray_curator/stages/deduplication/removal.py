@@ -40,12 +40,14 @@ class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
 
     Args:
         ids_to_remove_path: Path to parquet files containing IDs to remove
-        id_field: Field to use for deduplication. Defaults to CURATOR_DEDUP_ID_STR.
+        id_field: Field to use for deduplication within the input dataframe. Defaults to CURATOR_DEDUP_ID_STR.
+        duplicate_id_field: Field to use for deduplication within the removal dataframe. Defaults to "id".
         read_kwargs: Additional arguments for reading parquet files
     """
 
     ids_to_remove_path: str
     id_field: str = CURATOR_DEDUP_ID_STR
+    duplicate_id_field: str = "id"
 
     # Optional parameters
     read_kwargs: dict[str, Any] | None = None
@@ -67,28 +69,28 @@ class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
         input_df_t0 = time.perf_counter()
         min_id = df[self.id_field].min()
         max_id = df[self.id_field].max()
-        input_df_time = time.perf_counter() - input_df_t0
+        input_df_min_max_time = time.perf_counter() - input_df_t0
         # Filter the parquet files for IDs to remove within this range
         read_dupes_t0 = time.perf_counter()
         removal_df = pd.read_parquet(
             self.ids_to_remove_path,
-            filters=[("id", ">=", min_id), ("id", "<=", max_id)],
-            columns=["id"],
+            filters=[(self.duplicate_id_field, ">=", min_id), (self.duplicate_id_field, "<=", max_id)],
+            columns=[self.duplicate_id_field],
             **self.read_kwargs,
             storage_options=self.read_kwargs.get("storage_options"),
         )
         read_dupes_time = time.perf_counter() - read_dupes_t0
-        removal_ids = set(removal_df["id"].tolist())
 
         # Filter out documents with IDs in the removal set using pandas
         time_to_remove_t0 = time.perf_counter()
+        removal_ids = set(removal_df[self.duplicate_id_field].tolist())
         df = df[~df[self.id_field].isin(removal_ids)]
-        time_to_remove_time = time.perf_counter() - time_to_remove_t0
+        removal_ids_time = time.perf_counter() - time_to_remove_t0
         self._log_metrics(
             {
-                "input_df_time": input_df_time,
+                "input_df_min_max_time": input_df_min_max_time,
                 "read_dupes_time": read_dupes_time,
-                "time_to_remove_time": time_to_remove_time,
+                "id_removal_time": removal_ids_time,
             }
         )
 
