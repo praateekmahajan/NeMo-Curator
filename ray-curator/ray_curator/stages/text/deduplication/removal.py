@@ -34,7 +34,7 @@ from ray_curator.tasks import DocumentBatch
 
 
 @dataclass
-class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
+class TextDuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     """
     Stage for removing duplicate documents based on pre-computed removal lists.
 
@@ -56,7 +56,7 @@ class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
         """Initialize parent class after dataclass initialization."""
         super().__init__()
         self._name = "DuplicatesRemovalStage"
-        self.read_kwargs = self.read_kwargs if self.read_kwargs is not None else {}
+        self.read_kwargs = self.read_kwargs.copy() if self.read_kwargs is not None else {}
 
     def process(self, task: DocumentBatch) -> DocumentBatch:
         """
@@ -77,7 +77,6 @@ class DuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
             filters=[(self.duplicate_id_field, ">=", min_id), (self.duplicate_id_field, "<=", max_id)],
             columns=[self.duplicate_id_field],
             **self.read_kwargs,
-            storage_options=self.read_kwargs.get("storage_options"),
         )
         read_dupes_time = time.perf_counter() - read_dupes_t0
 
