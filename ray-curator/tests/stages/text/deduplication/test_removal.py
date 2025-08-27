@@ -18,12 +18,12 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from ray_curator.stages.deduplication import DuplicatesRemovalStage
 from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
+from ray_curator.stages.text.deduplication.removal import TextDuplicatesRemovalStage
 from ray_curator.tasks import DocumentBatch
 
 
-class TestDuplicatesRemovalStage:
+class TestTextDuplicatesRemovalStage:
     @pytest.fixture
     def sample_document_batch(self) -> DocumentBatch:
         """Create a sample DocumentBatch for testing."""
@@ -70,7 +70,7 @@ class TestDuplicatesRemovalStage:
         # Mock the parquet read to return IDs 2 and 4
         mock_read_parquet.return_value = pd.DataFrame({"id": [2, 4]})
 
-        stage = DuplicatesRemovalStage(ids_to_remove_path=removal_parquet_file)
+        stage = TextDuplicatesRemovalStage(ids_to_remove_path=removal_parquet_file)
         result = stage.process(sample_document_batch)
 
         # Verify mock was called with correct parameters
@@ -99,7 +99,7 @@ class TestDuplicatesRemovalStage:
         # Mock the parquet read to return empty DataFrame
         mock_read_parquet.return_value = pd.DataFrame({"id": []})
 
-        stage = DuplicatesRemovalStage(ids_to_remove_path=removal_parquet_file)
+        stage = TextDuplicatesRemovalStage(ids_to_remove_path=removal_parquet_file)
         result = stage.process(sample_document_batch)
 
         result_df = result.to_pandas()
@@ -120,7 +120,7 @@ class TestDuplicatesRemovalStage:
         # Mock the parquet read to return IDs not in the batch (6, 7, 8)
         mock_read_parquet.return_value = pd.DataFrame({"id": [6, 7, 8]})
 
-        stage = DuplicatesRemovalStage(ids_to_remove_path=removal_parquet_file)
+        stage = TextDuplicatesRemovalStage(ids_to_remove_path=removal_parquet_file)
         result = stage.process(sample_document_batch)
 
         result_df = result.to_pandas()
@@ -140,7 +140,7 @@ class TestDuplicatesRemovalStage:
         # Mock the parquet read to return all IDs in the batch
         mock_read_parquet.return_value = pd.DataFrame({"id": [1, 2, 3, 4, 5]})
 
-        stage = DuplicatesRemovalStage(ids_to_remove_path=removal_parquet_file)
+        stage = TextDuplicatesRemovalStage(ids_to_remove_path=removal_parquet_file)
         result = stage.process(sample_document_batch)
 
         result_df = result.to_pandas()
@@ -170,7 +170,7 @@ class TestDuplicatesRemovalStage:
         # Mock the parquet read to return ID 20
         mock_read_parquet.return_value = pd.DataFrame({"dedup_id": ["id_2"]})
 
-        stage = DuplicatesRemovalStage(
+        stage = TextDuplicatesRemovalStage(
             ids_to_remove_path=removal_parquet_file,
             id_field="custom_id",
             duplicate_id_field="dedup_id",
