@@ -20,7 +20,6 @@ from typing import Any
 
 import pandas as pd
 import pytest
-from loguru import logger
 
 from ray_curator.backends.experimental.ray_data import RayDataExecutor
 from ray_curator.backends.xenna import XennaExecutor
@@ -37,7 +36,8 @@ def create_data_with_duplicates(input_dir: Path) -> pd.DataFrame:
     """Create test parquet files with text data for semantic deduplication testing."""
     input_dir.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame({
+    df = pd.DataFrame(
+        {
             "id": [1, 2, 3, 4, 100, 200, 300],
             "text": [
                 "The quick brown fox jumps over the lazy dog",
@@ -48,17 +48,20 @@ def create_data_with_duplicates(input_dir: Path) -> pd.DataFrame:
                 "Another test string",
                 "A different object",
             ],
-        })
+        }
+    )
     # Write to parquet files (one file per record for testing)
     for i in range(len(df)):
-        df.iloc[i:i+1].to_parquet(input_dir / f"test_file_{i}.parquet")
+        df.iloc[i : i + 1].to_parquet(input_dir / f"test_file_{i}.parquet")
     return df
+
 
 def create_data_without_duplicates(input_dir: Path) -> pd.DataFrame:
     """Create test JSONL files with text data for semantic deduplication testing."""
     input_dir.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame({
+    df = pd.DataFrame(
+        {
             "id": ["doc_1", "doc_2", "doc_3"],
             "text": [
                 "A test string",
@@ -68,7 +71,8 @@ def create_data_without_duplicates(input_dir: Path) -> pd.DataFrame:
                 "Soccer is the most popular sport in the world",
                 "Shakespear is a famous playwright",
             ],
-        })
+        }
+    )
     # Write line by line to parquet file
     for i in range(len(df)):
         df.iloc[i].to_parquet(input_dir / f"test_file_{i}.parquet")
@@ -118,6 +122,7 @@ class TestTextSemanticDeduplicationWorkflow:
         """Test semantic deduplication with duplicate removal on dataset with known duplicates."""
         # Skip the class fixture for this standalone test
         import pytest
+
         pytest.skip("This test is designed to run standalone, skipping class fixture setup")
 
     def test_semantic_dedup_with_duplicates_and_removal_standalone(self, tmp_path_factory: pytest.TempPathFactory):
@@ -177,8 +182,12 @@ class TestTextSemanticDeduplicationWorkflow:
         second_group_kept = final_ids.intersection(second_group_ids)
 
         # Verify the exact counts as specified
-        assert len(first_group_kept) == 3, f"Expected 3 records from first group {first_group_ids}, got {len(first_group_kept)}: {sorted(first_group_kept)}"
-        assert len(second_group_kept) == 2, f"Expected 2 records from second group {second_group_ids}, got {len(second_group_kept)}: {sorted(second_group_kept)}"
+        assert len(first_group_kept) == 3, (
+            f"Expected 3 records from first group {first_group_ids}, got {len(first_group_kept)}: {sorted(first_group_kept)}"
+        )
+        assert len(second_group_kept) == 2, (
+            f"Expected 2 records from second group {second_group_ids}, got {len(second_group_kept)}: {sorted(second_group_kept)}"
+        )
 
         # Verify total records (should be 3 + 2 = 5)
         expected_total = 5
