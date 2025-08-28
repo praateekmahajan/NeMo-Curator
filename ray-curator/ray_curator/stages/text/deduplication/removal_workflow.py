@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from loguru import logger
 
+from ray_curator.pipeline import Pipeline
 from ray_curator.stages.base import ProcessingStage
 from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
 from ray_curator.tasks import FileGroupTask
@@ -30,10 +31,9 @@ if TYPE_CHECKING:
 @dataclass
 class TextDuplicatesRemovalWorkflow:
     # required args
-    input_path: str
+    input_path: str | None
     ids_to_remove_path: str
     output_path: str
-    id_generator_path: str | None = None
 
     # input args
     input_filetype: Literal["parquet", "jsonl"] = "parquet"
@@ -49,6 +49,7 @@ class TextDuplicatesRemovalWorkflow:
     ids_to_remove_read_kwargs: dict[str, Any] | None = None
 
     # id generator args
+    id_generator_path: str | None = None
     id_generator_storage_options: dict[str, Any] | None = None
 
     # output args
@@ -69,6 +70,10 @@ class TextDuplicatesRemovalWorkflow:
         stages = []
 
         if initial_tasks is None:
+            if self.input_path is None:
+                msg = "input_path is required when initial_tasks is None"
+                raise ValueError(msg)
+
             from ray_curator.stages.file_partitioning import FilePartitioningStage
 
             stages.append(
@@ -141,7 +146,11 @@ class TextDuplicatesRemovalWorkflow:
     def run(
         self, executor: Optional["BaseExecutor"] = None, initial_tasks: list[FileGroupTask] | None = None
     ) -> list[FileGroupTask] | None:
-        stages = self._generate_stages(initial_tasks)
+        pipeline = Pipeline(
+            name="text_duplicates_removal_workflow",
+            description="Text duplicates removal workflow",
+            stages=self._generate_stages(initial_tasks),
+        )
 
         if executor is None:
             from ray_curator.backends.xenna import XennaExecutor
@@ -155,9 +164,9 @@ class TextDuplicatesRemovalWorkflow:
             )
 
             create_id_generator_actor(self.id_generator_path, storage_options=self.id_generator_storage_options)
-            output = executor.execute(stages, initial_tasks=initial_tasks)
+            output = pipeline.run(executor, initial_tasks=initial_tasks)
             kill_id_generator_actor(self.id_generator_path)
             return output
 
         else:
-            return executor.execute(stages, initial_tasks=initial_tasks)
+            return pipeline.run(executor, initial_tasks=initial_tasks)

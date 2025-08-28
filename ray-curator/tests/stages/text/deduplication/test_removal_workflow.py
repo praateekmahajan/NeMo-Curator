@@ -69,7 +69,7 @@ def create_input_files(input_dir: Path, num_files: int = 100) -> tuple[pd.DataFr
     "test_config",
     [
         pytest.param((RayDataExecutor, {}), id="ray_data"),
-        pytest.param((XennaExecutor, {"execution_mode": "streaming"}), id="xenna_streaming"),
+        pytest.param((XennaExecutor, {"execution_mode": "streaming"}), id="xenna"),
     ],
     indirect=True,
 )
@@ -354,3 +354,14 @@ class TestTextDuplicatesRemovalWorkflowGenerateStages:
         assert stages[3].write_kwargs is None
         assert stages[3].fields is None
         assert stages[3].mode == "ignore"
+
+    def test_initial_tasks_required(self):
+        workflow = TextDuplicatesRemovalWorkflow(
+            input_path=None,
+            ids_to_remove_path="ids_to_remove_path",
+            output_path="output_path",
+            input_filetype="parquet",
+            id_generator_path=None,
+        )
+        with pytest.raises(ValueError, match="input_path is required when initial_tasks is None"):
+            workflow._generate_stages(initial_tasks=None)
