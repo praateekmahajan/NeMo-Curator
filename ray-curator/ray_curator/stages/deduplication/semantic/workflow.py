@@ -366,7 +366,7 @@ class SemanticDeduplicationWorkflow:
                 logger.info(f"Similarity threshold used: {1.0 - self.eps:.3f} (eps={self.eps})")
             else:
                 logger.info(
-                    f"No duplicates identified with similary threshold of {1.0 - self.eps:.3f} (eps={self.eps})"
+                    f"No duplicates identified with similarity threshold of {1.0 - self.eps:.3f} (eps={self.eps})"
                 )
             logger.success("=" * 60)
 
