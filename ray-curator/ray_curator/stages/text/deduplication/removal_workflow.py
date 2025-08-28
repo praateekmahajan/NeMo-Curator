@@ -35,7 +35,7 @@ class TextDuplicatesRemovalWorkflow:
     ids_to_remove_read_kwargs: dict[str, Any] | None = None
 
     # id generator args
-    id_generator_kwargs: dict[str, Any] | None = None
+    id_generator_storage_options: dict[str, Any] | None = None
 
     # output args
     output_file_extension: str | None = None
@@ -143,7 +143,7 @@ class TextDuplicatesRemovalWorkflow:
                 kill_id_generator_actor,
             )
 
-            create_id_generator_actor(self.id_generator_path, **(self.id_generator_kwargs or {}))
+            create_id_generator_actor(self.id_generator_path, storage_options=self.id_generator_storage_options)
             output = executor.execute(stages, initial_tasks=initial_tasks)
             kill_id_generator_actor(self.id_generator_path)
             return output
