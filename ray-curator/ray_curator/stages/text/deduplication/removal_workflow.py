@@ -1,3 +1,17 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
@@ -46,8 +60,7 @@ class TextDuplicatesRemovalWorkflow:
 
     def __post_init__(self):
         """Initialize parent class after dataclass initialization."""
-        super().__init__()
-        if self.id_generator_path is not None and self.input_id_field == CURATOR_DEDUP_ID_STR:
+        if self.id_generator_path is None and self.input_id_field == CURATOR_DEDUP_ID_STR:
             logger.warning(
                 f"Using {CURATOR_DEDUP_ID_STR} as input_id_field for removal stage, even though we are not using id generator."
             )
@@ -64,9 +77,7 @@ class TextDuplicatesRemovalWorkflow:
                     files_per_partition=self.input_files_per_partition,
                     blocksize=self.input_blocksize,
                     file_extensions=self.input_file_extensions,
-                    storage_options=self.input_kwargs.get("storage_options")
-                    if self.input_kwargs is not None
-                    else None,
+                    storage_options=(self.input_kwargs or {}).get("storage_options"),
                 )
             )
         else:
