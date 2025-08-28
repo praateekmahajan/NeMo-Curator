@@ -1,0 +1,152 @@
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal, Optional
+
+from loguru import logger
+
+from ray_curator.stages.base import ProcessingStage
+from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
+from ray_curator.tasks import FileGroupTask
+
+from .removal import TextDuplicatesRemovalStage
+
+if TYPE_CHECKING:
+    from ray_curator.backends.base import BaseExecutor
+
+
+@dataclass
+class TextDuplicatesRemovalWorkflow:
+    # required args
+    input_path: str
+    ids_to_remove_path: str
+    output_path: str
+    id_generator_path: str | None = None
+
+    # input args
+    input_filetype: Literal["parquet", "jsonl"] = "parquet"
+    input_fields: list[str] | None = None
+    input_id_field: str | None = CURATOR_DEDUP_ID_STR
+    input_files_per_partition: int | None = None
+    input_blocksize: str | None = None
+    input_file_extensions: list[str] | None = None
+    input_kwargs: dict[str, Any] | None = None
+
+    # ids_to_remove args
+    ids_to_remove_duplicate_id_field: str = "id"
+    ids_to_remove_read_kwargs: dict[str, Any] | None = None
+
+    # id generator args
+    id_generator_kwargs: dict[str, Any] | None = None
+
+    # output args
+    output_file_extension: str | None = None
+    output_filetype: Literal["parquet", "jsonl"] = "parquet"
+    output_kwargs: dict[str, Any] | None = None
+    output_fields: list[str] | None = None
+    output_mode: Literal["ignore", "overwrite", "append", "error"] | None = None
+
+    def __post_init__(self):
+        """Initialize parent class after dataclass initialization."""
+        super().__init__()
+        if self.id_generator_path is not None and self.input_id_field == CURATOR_DEDUP_ID_STR:
+            logger.warning(
+                f"Using {CURATOR_DEDUP_ID_STR} as input_id_field for removal stage, even though we are not using id generator."
+            )
+
+    def _generate_stages(self, initial_tasks: list[FileGroupTask] | None = None) -> list[ProcessingStage]:
+        stages = []
+
+        if initial_tasks is None:
+            from ray_curator.stages.file_partitioning import FilePartitioningStage
+
+            stages.append(
+                FilePartitioningStage(
+                    file_paths=self.input_path,
+                    files_per_partition=self.input_files_per_partition,
+                    blocksize=self.input_blocksize,
+                    file_extensions=self.input_file_extensions,
+                    storage_options=self.input_kwargs.get("storage_options")
+                    if self.input_kwargs is not None
+                    else None,
+                )
+            )
+        else:
+            fields_to_ignore = ["input_path", "input_files_per_partition", "input_blocksize", "input_file_extensions"]
+            logger.warning(f"Initial tasks provided, ignoring {fields_to_ignore}")
+
+        if self.input_filetype == "parquet":
+            from ray_curator.stages.text.io.reader.parquet import ParquetReaderStage
+
+            read_stage = ParquetReaderStage
+        elif self.input_filetype == "jsonl":
+            from ray_curator.stages.text.io.reader.jsonl import JsonlReaderStage
+
+            read_stage = JsonlReaderStage
+        else:
+            msg = f"Invalid input filetype: {self.input_filetype}"
+            raise ValueError(msg)
+
+        stages.append(
+            read_stage(
+                fields=self.input_fields,
+                read_kwargs=self.input_kwargs,
+                _generate_ids=False,
+                _assign_ids=self.id_generator_path is not None,
+            )
+        )
+
+        stages.append(
+            TextDuplicatesRemovalStage(
+                ids_to_remove_path=self.ids_to_remove_path,
+                id_field=self.input_id_field,
+                duplicate_id_field=self.ids_to_remove_duplicate_id_field,
+                read_kwargs=self.ids_to_remove_read_kwargs,
+            )
+        )
+
+        if self.output_filetype == "parquet":
+            from ray_curator.stages.text.io.writer.parquet import ParquetWriter
+
+            write_stage = ParquetWriter
+        elif self.output_filetype == "jsonl":
+            from ray_curator.stages.text.io.writer.jsonl import JsonlWriter
+
+            write_stage = JsonlWriter
+        else:
+            msg = f"Invalid output filetype: {self.output_filetype}"
+            raise ValueError(msg)
+
+        stages.append(
+            write_stage(
+                path=self.output_path,
+                **({"file_extension": self.output_file_extension} if self.output_file_extension else {}),
+                write_kwargs=self.output_kwargs,
+                fields=self.output_fields,
+                **({"mode": self.output_mode} if self.output_mode else {}),
+            )
+        )
+
+        return stages
+
+    def run(
+        self, executor: Optional["BaseExecutor"] = None, initial_tasks: list[FileGroupTask] | None = None
+    ) -> list[FileGroupTask] | None:
+        stages = self._generate_stages(initial_tasks)
+
+        if executor is None:
+            from ray_curator.backends.xenna import XennaExecutor
+
+            executor = XennaExecutor()
+
+        if self.id_generator_path is not None:
+            from ray_curator.stages.deduplication.id_generator import (
+                create_id_generator_actor,
+                kill_id_generator_actor,
+            )
+
+            create_id_generator_actor(self.id_generator_path, **(self.id_generator_kwargs or {}))
+            output = executor.execute(stages, initial_tasks=initial_tasks)
+            kill_id_generator_actor(self.id_generator_path)
+            return output
+
+        else:
+            return executor.execute(stages, initial_tasks=initial_tasks)
