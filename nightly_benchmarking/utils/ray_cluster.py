@@ -7,7 +7,8 @@ from pathlib import Path
 
 import ray  # noqa: F401
 from loguru import logger
-from ray_curator.core.client import RayClient
+
+from nemo_curator.core.client import RayClient
 
 
 def start_ray_head(

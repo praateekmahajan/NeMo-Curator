@@ -39,11 +39,11 @@ def run_removal_benchmark(  # noqa: PLR0913
 
     # Setup executor
     if executor_name == "ray_data":
-        from ray_curator.backends.experimental.ray_data import RayDataExecutor
+        from nemo_curator.backends.experimental.ray_data import RayDataExecutor
 
         executor = RayDataExecutor()
     elif executor_name == "xenna":
-        from ray_curator.backends.xenna import XennaExecutor
+        from nemo_curator.backends.xenna import XennaExecutor
 
         executor = XennaExecutor()
     else:
