@@ -70,10 +70,6 @@ class TestTextSemanticDeduplicationWorkflow:
     expected_df: pd.DataFrame | None = None
     output_tasks: list[Any] | None = None
 
-    # Attributes needed for the fixture
-    perform_removal: bool = False  # Will be overridden in individual tests
-    use_id_generator: bool = False  # Will be overridden in individual tests
-
     @pytest.fixture(scope="class", autouse=True)
     def test_config(
         self, request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
@@ -89,13 +85,17 @@ class TestTextSemanticDeduplicationWorkflow:
         self.input_dir = tmp_path / "input"
         self.output_dir = tmp_path / "output"
 
+    @pytest.mark.parametrize("use_id_generator", [True, False])
     def test_semantic_dedup_with_duplicates_and_removal_standalone(
-        self, tmp_path_factory: pytest.TempPathFactory
+        self,
+        tmp_path_factory: pytest.TempPathFactory,
+        use_id_generator: bool,
     ) -> None:
         """Test semantic deduplication with duplicate removal on dataset with known duplicates."""
         # Create test data with duplicates
         tmp_path = tmp_path_factory.mktemp("semantic_dedup_test")
         input_dir = tmp_path / "input"
+        cache_dir = tmp_path / "cache"
         output_dir = tmp_path / "output"
 
         # Create test data with duplicates
@@ -105,16 +105,17 @@ class TestTextSemanticDeduplicationWorkflow:
         workflow = TextSemanticDeduplicationWorkflow(
             input_path=str(input_dir),
             output_path=str(output_dir),
+            cache_path=str(cache_dir),
             perform_removal=True,
             n_clusters=3,  # Use fewer clusters to group similar documents
             eps=0.1,  # Set epsilon to identify duplicates
             which_to_keep="hard",  # Keep harder examples (less similar to others)
-            use_id_generator=False,  # Use existing IDs
-            id_field="id",
+            use_id_generator=use_id_generator,
+            id_field="id" if not use_id_generator else "_curator_dedup_id",
             input_filetype="parquet",
             output_filetype="parquet",
             verbose=True,
-            clear_output=True,  # Avoid potential race conditions
+            clear_output=True,
         )
 
         # Run the workflow
@@ -163,10 +164,12 @@ class TestTextSemanticDeduplicationWorkflow:
 
         # Check directory structure
         # embeddings
-        assert (output_dir / "embeddings").exists()
+        assert (cache_dir / "embeddings").exists()
 
         # semantic dedup
-        assert (output_dir / "semantic_dedup").exists()
+        assert (cache_dir / "semantic_dedup").exists()
+        assert (cache_dir / "kmeans_results").exists()
+        assert (cache_dir / "pairwise_results").exists()
 
         assert (output_dir / "duplicates").exists()
         assert (output_dir / "deduplicated").exists()
