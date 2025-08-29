@@ -23,7 +23,7 @@ This stage implements the removal phase of the distributed deduplication approac
 """
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import pandas as pd
@@ -50,13 +50,13 @@ class TextDuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
     duplicate_id_field: str = "id"
 
     # Optional parameters
-    read_kwargs: dict[str, Any] | None = None
+    read_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         """Initialize parent class after dataclass initialization."""
         super().__init__()
         self._name = "DuplicatesRemovalStage"
-        self.read_kwargs = self.read_kwargs.copy() if self.read_kwargs is not None else {}
+        self.read_kwargs = self.read_kwargs.copy()
 
     def process(self, task: DocumentBatch) -> DocumentBatch:
         """
