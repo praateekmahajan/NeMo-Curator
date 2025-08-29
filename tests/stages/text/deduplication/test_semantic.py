@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# ruff: noqa: E402
 import os
 from pathlib import Path
 from typing import Any
@@ -20,13 +21,9 @@ import pytest
 
 from nemo_curator.backends.experimental.ray_data import RayDataExecutor
 from nemo_curator.backends.xenna import XennaExecutor
-from nemo_curator.stages.text.deduplication.semantic import TextSemanticDeduplicationWorkflow
 
-# Test data constants (matching original test_semdedup.py patterns)
-N_CLUSTERS = 5
-N_SAMPLES_PER_CLUSTER = [100 * (i + 1) for i in range(N_CLUSTERS)]
-N_FEATURES = 3
-TOTAL_SAMPLES = sum(N_SAMPLES_PER_CLUSTER)
+_ = pytest.importorskip("cudf")
+from nemo_curator.stages.text.deduplication.semantic import TextSemanticDeduplicationWorkflow
 
 
 def create_data_with_duplicates(input_dir: Path) -> pd.DataFrame:
