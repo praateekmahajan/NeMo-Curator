@@ -160,3 +160,21 @@ class TestTextSemanticDeduplicationWorkflow:
         expected_total = 5
         actual_total = len(final_df)
         assert actual_total == expected_total, f"Expected {expected_total} total records, got {actual_total}"
+
+        # Check directory structure
+        # embeddings
+        assert (output_dir / "embeddings").exists()
+
+        # semantic dedup
+        assert (output_dir / "semantic_dedup").exists()
+
+        assert (output_dir / "duplicates").exists()
+        assert (output_dir / "deduplicated").exists()
+        if self.use_id_generator:
+            assert (output_dir / "semantic_id_generator.json").exists()
+        else:
+            assert not (output_dir / "semantic_id_generator.json").exists()
+
+        # Check that the embeddings are saved
+        embeddings_files = list(Path(output_dir / "embeddings").glob("*.parquet"))
+        assert len(embeddings_files) > 0, "No embeddings files found"
