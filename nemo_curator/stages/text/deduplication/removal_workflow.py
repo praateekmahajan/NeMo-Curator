@@ -17,15 +17,15 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from loguru import logger
 
-from ray_curator.pipeline import Pipeline
-from ray_curator.stages.base import ProcessingStage
-from ray_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
-from ray_curator.tasks import FileGroupTask
+from nemo_curator.pipeline import Pipeline
+from nemo_curator.stages.base import ProcessingStage
+from nemo_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
+from nemo_curator.tasks import FileGroupTask
 
 from .removal import TextDuplicatesRemovalStage
 
 if TYPE_CHECKING:
-    from ray_curator.backends.base import BaseExecutor
+    from nemo_curator.backends.base import BaseExecutor
 
 
 @dataclass
@@ -74,7 +74,7 @@ class TextDuplicatesRemovalWorkflow:
                 msg = "input_path is required when initial_tasks is None"
                 raise ValueError(msg)
 
-            from ray_curator.stages.file_partitioning import FilePartitioningStage
+            from nemo_curator.stages.file_partitioning import FilePartitioningStage
 
             stages.append(
                 FilePartitioningStage(
@@ -90,11 +90,11 @@ class TextDuplicatesRemovalWorkflow:
             logger.warning(f"Initial tasks provided, ignoring {fields_to_ignore}")
 
         if self.input_filetype == "parquet":
-            from ray_curator.stages.text.io.reader.parquet import ParquetReaderStage
+            from nemo_curator.stages.text.io.reader.parquet import ParquetReaderStage
 
             read_stage = ParquetReaderStage
         elif self.input_filetype == "jsonl":
-            from ray_curator.stages.text.io.reader.jsonl import JsonlReaderStage
+            from nemo_curator.stages.text.io.reader.jsonl import JsonlReaderStage
 
             read_stage = JsonlReaderStage
         else:
@@ -120,11 +120,11 @@ class TextDuplicatesRemovalWorkflow:
         )
 
         if self.output_filetype == "parquet":
-            from ray_curator.stages.text.io.writer.parquet import ParquetWriter
+            from nemo_curator.stages.text.io.writer.parquet import ParquetWriter
 
             write_stage = ParquetWriter
         elif self.output_filetype == "jsonl":
-            from ray_curator.stages.text.io.writer.jsonl import JsonlWriter
+            from nemo_curator.stages.text.io.writer.jsonl import JsonlWriter
 
             write_stage = JsonlWriter
         else:
@@ -153,12 +153,12 @@ class TextDuplicatesRemovalWorkflow:
         )
 
         if executor is None:
-            from ray_curator.backends.xenna import XennaExecutor
+            from nemo_curator.backends.xenna import XennaExecutor
 
             executor = XennaExecutor()
 
         if self.id_generator_path is not None:
-            from ray_curator.stages.deduplication.id_generator import (
+            from nemo_curator.stages.deduplication.id_generator import (
                 create_id_generator_actor,
                 kill_id_generator_actor,
             )
