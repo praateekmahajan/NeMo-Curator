@@ -47,6 +47,7 @@ class SemanticDeduplicationWorkflow:
     It consists of the following stages:
     - KMeansStage
         Takes the input path (embeddings) and clusters the embeddings into n_clusters.
+        Writes data partitioned by centroid to cache_path.
     - PairwiseStage
         Computes pairwise similarity between all embeddings in each cluster.
         Takes the output of KMeansStage and computes pairwise similarity between all embeddings in each cluster.
