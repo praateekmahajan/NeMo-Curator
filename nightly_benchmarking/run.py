@@ -23,8 +23,8 @@ from typing import Any
 
 import numpy as np
 from loguru import logger
-from ray_curator.tasks.utils import TaskPerfUtils
 
+from nemo_curator.tasks.utils import TaskPerfUtils
 from nightly_benchmarking.sinks.factory import build_sink
 from nightly_benchmarking.utils.datasets import DatasetResolver
 from nightly_benchmarking.utils.env_capture import capture_environment_artifacts, collect_basic_env

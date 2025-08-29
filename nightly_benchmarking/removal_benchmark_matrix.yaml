@@ -21,6 +21,7 @@ entries:
     args: >-
       --input-path {dataset:cleaned_cc,jsonl}
       --ids-to-remove-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/FuzzyDuplicateIds/
+      --id-generator-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/fuzzy_id_generator.json
       --output-path {session}/scratch
       --executor xenna
       --input-filetype jsonl
@@ -29,9 +30,10 @@ entries:
       --duplicate-id-field _curator_dedup_id
       --blocksize 1GiB
       --use-initial-tasks
-    timeout_s: 1800
+      --limit 10
+    timeout_s: 7200
     ray:
-      num_cpus: 128
+      num_cpus: 64
       num_gpus: 0
       enable_object_spilling: false
 
@@ -41,6 +43,7 @@ entries:
     args: >-
       --input-path {dataset:cleaned_cc,jsonl}
       --ids-to-remove-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/FuzzyDuplicateIds/
+      --id-generator-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/fuzzy_id_generator.json
       --output-path {session}/scratch
       --executor ray_data
       --input-filetype jsonl
@@ -49,8 +52,9 @@ entries:
       --duplicate-id-field _curator_dedup_id
       --blocksize 1GiB
       --use-initial-tasks
-    timeout_s: 1800
+      --limit 10
+    timeout_s: 7200
     ray:
-      num_cpus: 128
+      num_cpus: 64
       num_gpus: 0
       enable_object_spilling: false

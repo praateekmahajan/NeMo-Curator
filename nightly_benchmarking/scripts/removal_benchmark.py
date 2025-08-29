@@ -14,9 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-from ray_curator.stages.file_partitioning import FilePartitioningStage
-from ray_curator.stages.text.deduplication.removal_workflow import TextDuplicatesRemovalWorkflow
-from ray_curator.tasks import EmptyTask
+
+from nemo_curator.stages.file_partitioning import FilePartitioningStage
+from nemo_curator.stages.text.deduplication.removal_workflow import TextDuplicatesRemovalWorkflow
+from nemo_curator.tasks import EmptyTask
 
 
 def run_removal_benchmark(  # noqa: PLR0913
@@ -32,6 +33,7 @@ def run_removal_benchmark(  # noqa: PLR0913
     blocksize: str | None = None,
     id_generator_path: str | None = None,
     use_initial_tasks: bool = False,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     """Run the removal benchmark and collect comprehensive metrics."""
 
@@ -87,7 +89,11 @@ def run_removal_benchmark(  # noqa: PLR0913
                 storage_options=None,
             )
             initial_tasks = partitioner.process(EmptyTask)
-            logger.info(f"Initial tasks: {len(initial_tasks)}")
+            log_msg = f"Initial tasks: {len(initial_tasks)}"
+            if limit:
+                initial_tasks = initial_tasks[:limit]
+                log_msg += f" (limited to {limit})"
+            logger.info(log_msg)
 
         output_tasks = workflow.run(executor, initial_tasks=initial_tasks)
         run_time_taken = time.perf_counter() - run_start_time
@@ -172,6 +178,7 @@ def main() -> int:
         action="store_true",
         help="If set, pre-compute initial FileGroupTasks via FilePartitioningStage and pass to workflow",
     )
+    parser.add_argument("--limit", type=int, default=None, help="Limit the number of tasks to process")
 
     args = parser.parse_args()
 
@@ -192,6 +199,7 @@ def main() -> int:
             blocksize=args.blocksize,
             id_generator_path=args.id_generator_path,
             use_initial_tasks=args.use_initial_tasks,
+            limit=args.limit,
         )
 
     except Exception as e:  # noqa: BLE001
