@@ -37,6 +37,7 @@ from nemo_curator.stages.deduplication.id_generator import (
     kill_id_generator_actor,
     write_id_generator_to_disk,
 )
+from nemo_curator.stages.deduplication.semantic.ranking import RankingStrategy
 from nemo_curator.stages.deduplication.semantic.workflow import SemanticDeduplicationWorkflow
 from nemo_curator.stages.text.deduplication.removal_workflow import TextDuplicatesRemovalWorkflow
 from nemo_curator.stages.text.embedders import EmbeddingCreatorStage
@@ -85,14 +86,14 @@ class TextSemanticDeduplicationWorkflow:
     # K-means clustering parameters
     kmeans_max_iter: int = 300
     kmeans_tol: float = 1e-4
-    kmeans_random_state: int | None = None
-    kmeans_init: str = "k-means++"
-    kmeans_n_init: int = 10
-    kmeans_oversampling_factor: int = 2
-    kmeans_max_samples_per_batch: int | None = None
+    kmeans_random_state: int = 42
+    kmeans_init: str = "k-means||"
+    kmeans_n_init: int | Literal["auto"] = 1
+    kmeans_oversampling_factor: float = 2.0
+    kmeans_max_samples_per_batch: int = 1 << 15  # 32768
     # Pairwise similarity parameters
-    ranking_strategy: str = "length"
-    pairwise_batch_size: int = 10000
+    ranking_strategy: RankingStrategy | None = None
+    pairwise_batch_size: int = 1024
     _duplicates_num_row_groups_hint: int | None = None
     # ID generator parameters
     use_id_generator: bool = False
@@ -146,7 +147,7 @@ class TextSemanticDeduplicationWorkflow:
         kmeans_n_init: Number of K-means initialization runs
         kmeans_oversampling_factor: Oversampling factor for K-means
         kmeans_max_samples_per_batch: Maximum samples per batch for K-means
-        ranking_strategy: Strategy for ranking documents within clusters
+        ranking_strategy: Custom ranking strategy for documents within clusters (None uses which_to_keep/distance_metric)
         pairwise_batch_size: Batch size for pairwise similarity computation
         _duplicates_num_row_groups_hint: Hint for number of row groups in duplicates output
 
