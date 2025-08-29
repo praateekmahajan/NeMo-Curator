@@ -362,7 +362,7 @@ class TextSemanticDeduplicationWorkflow:
             output_file_extension=self.output_file_extension,
             output_kwargs=self.write_kwargs,
             output_fields=self.output_fields,
-            output_mode="overwrite",
+            output_mode="ignore",
         )
 
         return workflow.run(executor=executor)

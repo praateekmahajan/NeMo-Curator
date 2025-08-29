@@ -117,6 +117,7 @@ class TestTextSemanticDeduplicationWorkflow:
             input_filetype="parquet",
             output_filetype="parquet",
             verbose=True,
+            clear_output=True,  # Avoid potential race conditions
         )
 
         # Run the workflow
