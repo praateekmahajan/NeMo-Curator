@@ -143,9 +143,9 @@ class SemanticDeduplicationWorkflow:
         self.output_path = output_path
         self.cache_path = cache_path or output_path
 
-        self.kmeans_output_path = os.path.join(cache_path, "kmeans_results")
-        self.pairwise_output_path = os.path.join(cache_path, "pairwise_results")
-        self.duplicates_output_path = os.path.join(output_path, "duplicates")
+        self.kmeans_output_path = os.path.join(self.cache_path, "kmeans_results")
+        self.pairwise_output_path = os.path.join(self.cache_path, "pairwise_results")
+        self.duplicates_output_path = os.path.join(self.output_path, "duplicates")
 
         self.n_clusters = n_clusters
 
