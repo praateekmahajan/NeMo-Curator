@@ -86,7 +86,7 @@ class TestTextSemanticDeduplicationWorkflow:
         self.output_dir = tmp_path / "output"
 
     @pytest.mark.parametrize("use_id_generator", [True, False])
-    def test_semantic_dedup_with_duplicates_and_removal_standalone(
+    def test_semantic_dedup_with_duplicates_and_removal_standalone(  # noqa: PLR0915
         self,
         tmp_path_factory: pytest.TempPathFactory,
         use_id_generator: bool,
@@ -163,21 +163,68 @@ class TestTextSemanticDeduplicationWorkflow:
         assert actual_total == expected_total, f"Expected {expected_total} total records, got {actual_total}"
 
         # Check directory structure
-        # embeddings
+        # Cache directories
         assert (cache_dir / "embeddings").exists()
-
-        # semantic dedup
         assert (cache_dir / "semantic_dedup").exists()
-        assert (cache_dir / "kmeans_results").exists()
-        assert (cache_dir / "pairwise_results").exists()
+        assert (cache_dir / "semantic_dedup" / "kmeans_results").exists()
+        assert (cache_dir / "semantic_dedup" / "pairwise_results").exists()
+        assert (cache_dir / "semantic_dedup" / "duplicates").exists()  # duplicates are in semantic_dedup path
 
+        # Output directories
         assert (output_dir / "duplicates").exists()
         assert (output_dir / "deduplicated").exists()
-        if self.use_id_generator:
+        if use_id_generator:
             assert (output_dir / "semantic_id_generator.json").exists()
         else:
             assert not (output_dir / "semantic_id_generator.json").exists()
 
-        # Check that the embeddings are saved
-        embeddings_files = list(Path(output_dir / "embeddings").glob("*.parquet"))
-        assert len(embeddings_files) > 0, "No embeddings files found"
+        # Validate data in each directory with pd.read_parquet
+        # 1. Check embeddings data
+        embeddings_df = pd.read_parquet(cache_dir / "embeddings")
+        expected_embedding_cols = {"id", "embeddings"}
+        assert set(embeddings_df.columns) >= expected_embedding_cols, (
+            f"Embeddings missing columns: {expected_embedding_cols - set(embeddings_df.columns)}"
+        )
+        assert len(embeddings_df) == 7, f"Expected 7 embedding records, got {len(embeddings_df)}"
+
+        # 2. Check kmeans results data
+        kmeans_df = pd.read_parquet(cache_dir / "semantic_dedup" / "kmeans_results")
+        expected_kmeans_cols = {"id", "embeddings", "centroid_id"}
+        assert set(kmeans_df.columns) >= expected_kmeans_cols, (
+            f"KMeans missing columns: {expected_kmeans_cols - set(kmeans_df.columns)}"
+        )
+        assert len(kmeans_df) == 7, f"Expected 7 kmeans records, got {len(kmeans_df)}"
+
+        # 3. Check pairwise results data
+        pairwise_df = pd.read_parquet(cache_dir / "semantic_dedup" / "pairwise_results")
+        expected_pairwise_cols = {"id", "rank_id"}
+        assert set(pairwise_df.columns) >= expected_pairwise_cols, (
+            f"Pairwise missing columns: {expected_pairwise_cols - set(pairwise_df.columns)}"
+        )
+        assert len(pairwise_df) == 7, f"Expected 7 pairwise records, got {len(pairwise_df)}"
+
+        # 4. Check duplicates data (both locations)
+        duplicates_semantic_df = pd.read_parquet(cache_dir / "semantic_dedup" / "duplicates")
+        expected_duplicates_cols = {"id"}
+        assert set(duplicates_semantic_df.columns) >= expected_duplicates_cols, (
+            f"Semantic duplicates missing columns: {expected_duplicates_cols - set(duplicates_semantic_df.columns)}"
+        )
+        assert len(duplicates_semantic_df) == 2, (
+            f"Expected 2 duplicate records in semantic path, got {len(duplicates_semantic_df)}"
+        )
+
+        duplicates_output_df = pd.read_parquet(output_dir / "duplicates")
+        assert set(duplicates_output_df.columns) >= expected_duplicates_cols, (
+            f"Output duplicates missing columns: {expected_duplicates_cols - set(duplicates_output_df.columns)}"
+        )
+        assert len(duplicates_output_df) == 2, (
+            f"Expected 2 duplicate records in output path, got {len(duplicates_output_df)}"
+        )
+
+        # 5. Check final deduplicated data
+        deduplicated_df = pd.read_parquet(output_dir / "deduplicated")
+        expected_dedup_cols = {"id", "text"}
+        assert set(deduplicated_df.columns) >= expected_dedup_cols, (
+            f"Deduplicated missing columns: {expected_dedup_cols - set(deduplicated_df.columns)}"
+        )
+        assert len(deduplicated_df) == 5, f"Expected 5 deduplicated records, got {len(deduplicated_df)}"
