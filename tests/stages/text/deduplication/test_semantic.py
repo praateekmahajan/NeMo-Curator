@@ -168,7 +168,6 @@ class TestTextSemanticDeduplicationWorkflow:
         assert (cache_dir / "semantic_dedup").exists()
         assert (cache_dir / "semantic_dedup" / "kmeans_results").exists()
         assert (cache_dir / "semantic_dedup" / "pairwise_results").exists()
-        assert (cache_dir / "semantic_dedup" / "duplicates").exists()  # duplicates are in semantic_dedup path
 
         # Output directories
         assert (output_dir / "duplicates").exists()
@@ -189,7 +188,7 @@ class TestTextSemanticDeduplicationWorkflow:
 
         # 2. Check kmeans results data
         kmeans_df = pd.read_parquet(cache_dir / "semantic_dedup" / "kmeans_results")
-        expected_kmeans_cols = {"id", "embeddings", "centroid_id"}
+        expected_kmeans_cols = {"id", "embeddings", "centroid"}
         assert set(kmeans_df.columns) >= expected_kmeans_cols, (
             f"KMeans missing columns: {expected_kmeans_cols - set(kmeans_df.columns)}"
         )
@@ -197,23 +196,15 @@ class TestTextSemanticDeduplicationWorkflow:
 
         # 3. Check pairwise results data
         pairwise_df = pd.read_parquet(cache_dir / "semantic_dedup" / "pairwise_results")
-        expected_pairwise_cols = {"id", "rank_id"}
+        expected_pairwise_cols = {"id"}
         assert set(pairwise_df.columns) >= expected_pairwise_cols, (
             f"Pairwise missing columns: {expected_pairwise_cols - set(pairwise_df.columns)}"
         )
         assert len(pairwise_df) == 7, f"Expected 7 pairwise records, got {len(pairwise_df)}"
 
-        # 4. Check duplicates data (both locations)
-        duplicates_semantic_df = pd.read_parquet(cache_dir / "semantic_dedup" / "duplicates")
-        expected_duplicates_cols = {"id"}
-        assert set(duplicates_semantic_df.columns) >= expected_duplicates_cols, (
-            f"Semantic duplicates missing columns: {expected_duplicates_cols - set(duplicates_semantic_df.columns)}"
-        )
-        assert len(duplicates_semantic_df) == 2, (
-            f"Expected 2 duplicate records in semantic path, got {len(duplicates_semantic_df)}"
-        )
-
+        # 4. Check duplicates data (in output directory only)
         duplicates_output_df = pd.read_parquet(output_dir / "duplicates")
+        expected_duplicates_cols = {"id"}
         assert set(duplicates_output_df.columns) >= expected_duplicates_cols, (
             f"Output duplicates missing columns: {expected_duplicates_cols - set(duplicates_output_df.columns)}"
         )

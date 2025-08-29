@@ -300,7 +300,8 @@ class TextSemanticDeduplicationWorkflow:
 
         workflow = SemanticDeduplicationWorkflow(
             input_path=self.embeddings_path,
-            output_path=self.semantic_dedup_path,
+            cache_path=self.semantic_dedup_path,
+            output_path=self.output_path,
             n_clusters=self.n_clusters,
             # Core data configuration
             id_field=self.id_field,
@@ -343,7 +344,7 @@ class TextSemanticDeduplicationWorkflow:
         workflow = TextDuplicatesRemovalWorkflow(
             # Use the original dataset as input so final outputs have original columns
             input_path=self.input_path,
-            ids_to_remove_path=os.path.join(self.semantic_dedup_path, "duplicates"),
+            ids_to_remove_path=self.duplicates_path,
             output_path=self.deduplicated_output_path,
             input_filetype=self.input_filetype,
             input_id_field=self.id_field,
