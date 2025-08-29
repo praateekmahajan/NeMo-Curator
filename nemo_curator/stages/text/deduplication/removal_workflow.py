@@ -164,8 +164,13 @@ class TextDuplicatesRemovalWorkflow:
             )
 
             create_id_generator_actor(self.id_generator_path, storage_options=self.id_generator_storage_options)
-            output = pipeline.run(executor, initial_tasks=initial_tasks)
-            kill_id_generator_actor()
+            try:
+                output = pipeline.run(executor, initial_tasks=initial_tasks)
+            except Exception as e:
+                logger.error(f"Error running pipeline: {e}")
+                raise
+            finally:
+                kill_id_generator_actor()
             return output
 
         else:
