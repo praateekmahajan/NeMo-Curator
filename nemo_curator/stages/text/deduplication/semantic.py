@@ -465,6 +465,19 @@ class TextSemanticDeduplicationWorkflow:
 
             logger.success(f"Semantic deduplication completed in {semantic_time:.2f} seconds")
 
+            # Save ID generator state after semantic deduplication, before removal stage
+            if self.use_id_generator:
+                try:
+                    logger.info(f"Saving ID generator state to: {self.id_generator_state_file}")
+                    write_id_generator_to_disk(self.id_generator_state_file)
+                    logger.info("ID generator state saved for removal stage")
+                except Exception as save_error:
+                    logger.error(f"Error saving ID generator state: {save_error}")
+                    raise
+                finally:
+                    logger.info("Killing ID generator actor...")
+                    kill_id_generator_actor()
+
             # Stage 3: Duplicate removal (optional)
             removal_results = []
             removal_time = 0.0
@@ -479,17 +492,6 @@ class TextSemanticDeduplicationWorkflow:
             # Calculate total time
             total_end_time = time.time()
             total_time = total_end_time - total_start_time
-
-            # Cleanup ID generator if it was created
-            if self.use_id_generator:
-                try:
-                    logger.info(f"Saving ID generator state to: {self.id_generator_state_file}")
-                    write_id_generator_to_disk(self.id_generator_state_file)
-                    logger.info("Killing ID generator actor...")
-                    kill_id_generator_actor()
-                    logger.info("ID generator cleanup completed")
-                except Exception as cleanup_error:  # noqa: BLE001
-                    logger.warning(f"Error during ID generator cleanup: {cleanup_error}")
 
             # Log final summary
             logger.success("=" * 80)

@@ -178,9 +178,11 @@ class TestTextSemanticDeduplicationWorkflow:
             assert not (output_dir / "semantic_id_generator.json").exists()
 
         # Validate data in each directory with pd.read_parquet
+        # ID field used in intermediate stages (embeddings, kmeans, pairwise)
+        intermediate_id_field = "id" if not use_id_generator else "_curator_dedup_id"
         # 1. Check embeddings data
         embeddings_df = pd.read_parquet(cache_dir / "embeddings")
-        expected_embedding_cols = {"id", "embeddings"}
+        expected_embedding_cols = {intermediate_id_field, "embeddings"}
         assert set(embeddings_df.columns) >= expected_embedding_cols, (
             f"Embeddings missing columns: {expected_embedding_cols - set(embeddings_df.columns)}"
         )
@@ -188,7 +190,7 @@ class TestTextSemanticDeduplicationWorkflow:
 
         # 2. Check kmeans results data
         kmeans_df = pd.read_parquet(cache_dir / "semantic_dedup" / "kmeans_results")
-        expected_kmeans_cols = {"id", "embeddings", "centroid"}
+        expected_kmeans_cols = {intermediate_id_field, "embeddings", "centroid"}
         assert set(kmeans_df.columns) >= expected_kmeans_cols, (
             f"KMeans missing columns: {expected_kmeans_cols - set(kmeans_df.columns)}"
         )
@@ -196,7 +198,7 @@ class TestTextSemanticDeduplicationWorkflow:
 
         # 3. Check pairwise results data
         pairwise_df = pd.read_parquet(cache_dir / "semantic_dedup" / "pairwise_results")
-        expected_pairwise_cols = {"id"}
+        expected_pairwise_cols = {intermediate_id_field}
         assert set(pairwise_df.columns) >= expected_pairwise_cols, (
             f"Pairwise missing columns: {expected_pairwise_cols - set(pairwise_df.columns)}"
         )
