@@ -327,6 +327,7 @@ class TextSemanticDeduplicationWorkflow:
             # I/O and storage parameters
             read_kwargs=self.cache_kwargs,
             write_kwargs=self.cache_kwargs,
+            clear_output=False,  # since the init of the workflow clears the output path
             verbose=self.verbose,
         )
 
@@ -454,18 +455,8 @@ class TextSemanticDeduplicationWorkflow:
             embedding_results = self._run_embedding_generation(embedding_executor)
             embedding_end_time = time.time()
             embedding_time = embedding_end_time - embedding_start_time
-
             logger.success(f"Embedding generation completed in {embedding_time:.2f} seconds")
 
-            # Stage 2: Semantic deduplication
-            semantic_start_time = time.time()
-            semantic_results = self._run_semantic_deduplication(pairwise_executor)
-            semantic_end_time = time.time()
-            semantic_time = semantic_end_time - semantic_start_time
-
-            logger.success(f"Semantic deduplication completed in {semantic_time:.2f} seconds")
-
-            # Save ID generator state after semantic deduplication, before removal stage
             if self.use_id_generator:
                 try:
                     logger.info(f"Saving ID generator state to: {self.id_generator_state_file}")
@@ -477,6 +468,14 @@ class TextSemanticDeduplicationWorkflow:
                 finally:
                     logger.info("Killing ID generator actor...")
                     kill_id_generator_actor()
+
+            # Stage 2: Semantic deduplication
+            semantic_start_time = time.time()
+            semantic_results = self._run_semantic_deduplication(pairwise_executor)
+            semantic_end_time = time.time()
+            semantic_time = semantic_end_time - semantic_start_time
+
+            logger.success(f"Semantic deduplication completed in {semantic_time:.2f} seconds")
 
             # Stage 3: Duplicate removal (optional)
             removal_results = []
