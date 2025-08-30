@@ -89,7 +89,7 @@ class RayClient:
                 msg = (
                     "No monitoring services are running. "
                     "Please run the `start_prometheus_grafana.py` "
-                    "script from ray_curator/metrics folder to setup monitoring services separately."
+                    "script from nemo_curator/metrics folder to setup monitoring services separately."
                 )
                 logger.warning(msg)
 
@@ -135,12 +135,3 @@ class RayClient:
             logger.info(msg)
             # Clear the process to prevent double execution (atexit handler)
             self.ray_process = None
-
-
-if __name__ == "__main__":
-    client = RayClient()
-    client.start()
-    import time
-
-    time.sleep(10)  # Wait for ray to start
-    client.stop()

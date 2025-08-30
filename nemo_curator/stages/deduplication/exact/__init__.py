@@ -12,15 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-DEFAULT_RAY_PORT = 6379
-DEFAULT_RAY_DASHBOARD_PORT = 8265
-DEFAULT_RAY_TEMP_DIR = "/tmp/ray"  # noqa: S108
-DEFAULT_RAY_METRICS_PORT = 8080
-DEFAULT_RAY_DASHBOARD_HOST = "127.0.0.1"
-DEFAULT_RAY_CLIENT_SERVER_PORT = 10001
-DEFAULT_RAY_AUTOSCALER_METRIC_PORT = 44217
-DEFAULT_RAY_DASHBOARD_METRIC_PORT = 44227
+from .identification import ExactDuplicateIdentification
 
-# We cannot use a free port between 10000 and 19999 as it is used by Ray.
-DEFAULT_RAY_MIN_WORKER_PORT = 10002
-DEFAULT_RAY_MAX_WORKER_PORT = 19999
+__all__ = ["ExactDuplicateIdentification"]

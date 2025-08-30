@@ -23,6 +23,8 @@ from loguru import logger
 from nemo_curator.core.constants import (
     DEFAULT_RAY_AUTOSCALER_METRIC_PORT,
     DEFAULT_RAY_DASHBOARD_METRIC_PORT,
+    DEFAULT_RAY_MAX_WORKER_PORT,
+    DEFAULT_RAY_MIN_WORKER_PORT,
 )
 
 if TYPE_CHECKING:
@@ -35,6 +37,8 @@ def get_free_port(start_port: int, get_next_free_port: bool = True) -> int:
     Else, it will raise an error if the free port is not equal to start_port.
     """
     for port in range(start_port, 65535):
+        if port >= DEFAULT_RAY_MIN_WORKER_PORT and port <= DEFAULT_RAY_MAX_WORKER_PORT:
+            continue
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             # SO_REUSEADDR to avoid TIME_WAIT issues on some OSes
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -111,6 +115,10 @@ def init_cluster(  # noqa: PLR0913
     # We need to set these env vars to ensure that metrics of ray dashboard and autoscaler are available for various different clusters.
     os.environ["DASHBOARD_METRIC_PORT"] = str(get_free_port(DEFAULT_RAY_DASHBOARD_METRIC_PORT))
     os.environ["AUTOSCALER_METRIC_PORT"] = str(get_free_port(DEFAULT_RAY_AUTOSCALER_METRIC_PORT))
+
+    # We set some env vars for Xenna here. This is only used for Xenna clusters.
+    os.environ["XENNA_RAY_METRICS_PORT"] = str(ray_metrics_port)
+    os.environ["XENNA_RESPECT_CUDA_VISIBLE_DEVICES"] = "1"
 
     proc = subprocess.Popen(ray_command, shell=False)  # noqa: S603
     logger.info(f"Ray start command: {' '.join(ray_command)}")
