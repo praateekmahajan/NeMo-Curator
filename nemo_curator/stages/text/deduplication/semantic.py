@@ -153,9 +153,7 @@ class TextSemanticDeduplicationWorkflow:
 
         # ID generator parameters
         use_id_generator: Whether to use ID generator for document IDs
-
-        # Executor configuration
-        executor: Single executor for all stages or tuple of (embedding, pairwise, removal) executors
+        id_generator_state_file: Path to save/load ID generator state (auto-generated if None)
 
         # I/O parameters
         input_files_per_partition: Number of files per partition for reading
@@ -163,7 +161,10 @@ class TextSemanticDeduplicationWorkflow:
         input_filetype: Type of input files ("jsonl" or "parquet")
         input_file_extensions: List of file extensions to process
         output_filetype: Type of output files ("jsonl" or "parquet")
+        output_file_extension: File extension for output files (None for default)
+        output_fields: List of fields to include in final output (None for all fields)
         read_kwargs: Keyword arguments for reading files
+        cache_kwargs: Keyword arguments for cache operations and storage
         write_kwargs: Keyword arguments for writing files
 
         # Execution parameters
@@ -223,7 +224,8 @@ class TextSemanticDeduplicationWorkflow:
 
     def _run_embedding_generation(self, executor: BaseExecutor) -> list[Any]:
         """Run embedding generation stage."""
-        logger.info("Starting embedding generation stage...")
+        if self.verbose:
+            logger.info("Starting embedding generation stage...")
 
         pipeline = Pipeline(
             name="text_semantic_dedup_embedding",
@@ -296,7 +298,8 @@ class TextSemanticDeduplicationWorkflow:
 
     def _run_semantic_deduplication(self, executor: BaseExecutor) -> dict[str, Any]:
         """Run semantic deduplication stage."""
-        logger.info("Starting semantic deduplication stage...")
+        if self.verbose:
+            logger.debug("Starting semantic deduplication stage...")
 
         workflow = SemanticDeduplicationWorkflow(
             input_path=self.embeddings_path,
@@ -336,10 +339,12 @@ class TextSemanticDeduplicationWorkflow:
     def _run_duplicate_removal(self, executor: BaseExecutor) -> list[Any]:
         """Run duplicate removal stage."""
         if not self.perform_removal:
-            logger.info("Skipping duplicate removal (perform_removal=False)")
+            if self.verbose:
+                logger.info("Skipping duplicate removal (perform_removal=False)")
             return []
 
-        logger.info("Starting duplicate removal stage...")
+        if self.verbose:
+            logger.debug("Starting duplicate removal stage...")
 
         # Find the duplicates file from semantic deduplication
         workflow = TextDuplicatesRemovalWorkflow(
@@ -437,16 +442,17 @@ class TextSemanticDeduplicationWorkflow:
         try:
             # Setup
             self._setup_directories()
-            self._log_configuration()
+            if self.verbose:
+                self._log_configuration()
 
             # Setup ID generator if needed
             if self.use_id_generator:
-                logger.info(f"Setting up ID generator, state will be saved to: {self.id_generator_state_file}")
+                logger.debug(f"Setting up ID generator, state will be saved to: {self.id_generator_state_file}")
                 try:
                     create_id_generator_actor()
                 except ValueError as e:
                     if "already taken" in str(e):
-                        logger.info("ID generator actor already exists, using existing actor")
+                        logger.debug("ID generator actor already exists, using existing actor")
                     else:
                         raise
 
@@ -459,14 +465,15 @@ class TextSemanticDeduplicationWorkflow:
 
             if self.use_id_generator:
                 try:
-                    logger.info(f"Saving ID generator state to: {self.id_generator_state_file}")
                     write_id_generator_to_disk(self.id_generator_state_file)
-                    logger.info("ID generator state saved for removal stage")
+                    if self.verbose:
+                        logger.debug(f"ID generator state saved for removal stage to: {self.id_generator_state_file}")
                 except Exception as save_error:
                     logger.error(f"Error saving ID generator state: {save_error}")
                     raise
                 finally:
-                    logger.info("Killing ID generator actor...")
+                    if self.verbose:
+                        logger.debug("Killing ID generator actor...")
                     kill_id_generator_actor()
 
             # Stage 2: Semantic deduplication
@@ -493,18 +500,19 @@ class TextSemanticDeduplicationWorkflow:
             total_time = total_end_time - total_start_time
 
             # Log final summary
-            logger.success("=" * 80)
-            logger.success("TEXT SEMANTIC DEDUPLICATION WORKFLOW COMPLETED")
-            logger.success("=" * 80)
-            logger.success(f"Total execution time: {total_time:.2f} seconds ({total_time / 60:.2f} minutes)")
-            logger.info(f"Embedding generation time: {embedding_time:.2f} seconds")
-            logger.info(f"Semantic deduplication time: {semantic_time:.2f} seconds")
-            if self.perform_removal:
-                logger.info(f"Duplicate removal time: {removal_time:.2f} seconds")
-            if semantic_results.get("total_duplicates_identified", 0) > 0:
-                logger.success(
-                    f"Total documents identified as duplicates: {semantic_results['total_duplicates_identified']}"
-                )
+            if self.verbose:
+                logger.success("=" * 80)
+                logger.success("TEXT SEMANTIC DEDUPLICATION WORKFLOW COMPLETED")
+                logger.success("=" * 80)
+                logger.success(f"Total execution time: {total_time:.2f} seconds ({total_time / 60:.2f} minutes)")
+                logger.info(f"Embedding generation time: {embedding_time:.2f} seconds")
+                logger.info(f"Semantic deduplication time: {semantic_time:.2f} seconds")
+                if self.perform_removal:
+                    logger.info(f"Duplicate removal time: {removal_time:.2f} seconds (removed {removal_results} rows)")
+                if semantic_results.get("total_duplicates_identified", 0) > 0:
+                    logger.success(
+                        f"Total documents identified as duplicates: {semantic_results['total_duplicates_identified']}"
+                    )
             logger.success("=" * 80)
 
         except Exception as e:
