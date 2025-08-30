@@ -54,8 +54,10 @@ def create_data_with_duplicates(input_dir: Path) -> pd.DataFrame:
 @pytest.mark.parametrize(
     "test_config",
     [
-        pytest.param((XennaExecutor, {}), id="xenna"),
-        pytest.param((RayDataExecutor, {}), id="ray_data"),
+        pytest.param((XennaExecutor, {}, True), id="xenna_with_id_generator"),
+        pytest.param((XennaExecutor, {}, False), id="xenna_without_id_generator"),
+        pytest.param((RayDataExecutor, {}, True), id="ray_data_with_id_generator"),
+        pytest.param((RayDataExecutor, {}, False), id="ray_data_without_id_generator"),
     ],
     indirect=True,
 )
@@ -65,47 +67,39 @@ class TestTextSemanticDeduplicationWorkflow:
     # Class attributes for shared test data
     executor_cls: type | None = None
     config: dict[str, Any] | None = None
+    use_id_generator: bool | None = None
     input_dir: Path | None = None
     output_dir: Path | None = None
+    cache_dir: Path | None = None
     expected_df: pd.DataFrame | None = None
-    output_tasks: list[Any] | None = None
+    results: dict[str, Any] | None = None
+    final_df: pd.DataFrame | None = None
 
     @pytest.fixture(scope="class", autouse=True)
     def test_config(
         self, request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
     ) -> "TestTextSemanticDeduplicationWorkflow":
         """Set up test environment and execute workflow."""
-        executor_cls, config = request.param
+        executor_cls, config, use_id_generator = request.param
 
         request.cls.executor_cls = executor_cls
         request.cls.config = config
+        request.cls.use_id_generator = use_id_generator
 
         # Create test data
         tmp_path = tmp_path_factory.mktemp("semantic_workflow_test")
-        self.input_dir = tmp_path / "input"
-        self.output_dir = tmp_path / "output"
-
-    @pytest.mark.parametrize("use_id_generator", [True, False])
-    def test_semantic_dedup_with_duplicates_and_removal_standalone(  # noqa: PLR0915
-        self,
-        tmp_path_factory: pytest.TempPathFactory,
-        use_id_generator: bool,
-    ) -> None:
-        """Test semantic deduplication with duplicate removal on dataset with known duplicates."""
-        # Create test data with duplicates
-        tmp_path = tmp_path_factory.mktemp("semantic_dedup_test")
-        input_dir = tmp_path / "input"
-        cache_dir = tmp_path / "cache"
-        output_dir = tmp_path / "output"
+        request.cls.input_dir = tmp_path / "input"
+        request.cls.output_dir = tmp_path / "output"
+        request.cls.cache_dir = tmp_path / "cache"
 
         # Create test data with duplicates
-        create_data_with_duplicates(input_dir)
+        request.cls.expected_df = create_data_with_duplicates(request.cls.input_dir)
 
         # Run workflow with duplicate removal enabled using the configured executor
         workflow = TextSemanticDeduplicationWorkflow(
-            input_path=str(input_dir),
-            output_path=str(output_dir),
-            cache_path=str(cache_dir),
+            input_path=str(request.cls.input_dir),
+            output_path=str(request.cls.output_dir),
+            cache_path=str(request.cls.cache_dir),
             perform_removal=True,
             n_clusters=3,  # Use fewer clusters to group similar documents
             eps=0.1,  # Set epsilon to identify duplicates
@@ -119,26 +113,38 @@ class TestTextSemanticDeduplicationWorkflow:
         )
 
         # Run the workflow
-        results = workflow.run(self.executor_cls(self.config))
+        request.cls.results = workflow.run(executor_cls(config))
 
+        # Read the final deduplicated output for use in tests
+        final_output_path = request.cls.results["final_output_path"]
+        output_files = list(Path(final_output_path).glob("*.parquet"))
+        if output_files:
+            request.cls.final_df = pd.read_parquet(output_files)
+        else:
+            request.cls.final_df = pd.DataFrame()
+
+        return
+
+    def test_semantic_deduplication_correctness(self) -> None:
+        """Test that semantic deduplication produces the correct number of records from each group."""
         # Verify the workflow completed successfully
-        assert "total_execution_time" in results
-        assert results["total_execution_time"] > 0
+        assert self.results is not None, "Workflow results should be available"
+        assert "total_execution_time" in self.results
+        assert self.results["total_execution_time"] > 0
 
         # Check that final output directory exists
-        final_output_path = results["final_output_path"]
+        final_output_path = self.results["final_output_path"]
         assert final_output_path is not None
         assert os.path.exists(final_output_path)
 
-        # Read the deduplicated output
+        # Verify we have output files and data
         output_files = list(Path(final_output_path).glob("*.parquet"))
         assert len(output_files) > 0, "No output files found"
-
-        # Read all output data
-        final_df = pd.read_parquet(output_files)
+        assert self.final_df is not None, "Final dataframe should not be None"
+        assert not self.final_df.empty, "Final dataframe should not be empty"
 
         # Extract the IDs from the final deduplicated dataset
-        final_ids = set(final_df["id"].tolist()) if not final_df.empty else set()
+        final_ids = set(self.final_df["id"].tolist())
 
         # Expected behavior based on user's requirements:
         # First group (1, 2, 3, 4): should keep exactly 3 records
@@ -159,53 +165,77 @@ class TestTextSemanticDeduplicationWorkflow:
 
         # Verify total records (should be 3 + 2 = 5)
         expected_total = 5
-        actual_total = len(final_df)
+        actual_total = len(self.final_df)
         assert actual_total == expected_total, f"Expected {expected_total} total records, got {actual_total}"
 
-        # Check directory structure
-        # Cache directories
-        assert (cache_dir / "embeddings").exists()
-        assert (cache_dir / "semantic_dedup").exists()
-        assert (cache_dir / "semantic_dedup" / "kmeans_results").exists()
-        assert (cache_dir / "semantic_dedup" / "pairwise_results").exists()
+    def test_directory_structure(self) -> None:
+        """Test that all expected directories are present."""
+        assert self.cache_dir is not None, "Cache directory should be set"
+        assert self.output_dir is not None, "Output directory should be set"
+        assert self.use_id_generator is not None, "ID generator flag should be set"
 
-        # Output directories
-        assert (output_dir / "duplicates").exists()
-        assert (output_dir / "deduplicated").exists()
-        if use_id_generator:
-            assert (output_dir / "semantic_id_generator.json").exists()
+        # Check cache directories
+        assert (self.cache_dir / "embeddings").exists(), "Embeddings cache directory should exist"
+        assert (self.cache_dir / "semantic_dedup").exists(), "Semantic dedup cache directory should exist"
+        assert (self.cache_dir / "semantic_dedup" / "kmeans_results").exists(), "KMeans results directory should exist"
+        assert (self.cache_dir / "semantic_dedup" / "pairwise_results").exists(), (
+            "Pairwise results directory should exist"
+        )
+
+        # Check output directories
+        assert (self.output_dir / "duplicates").exists(), "Duplicates output directory should exist"
+        assert (self.output_dir / "deduplicated").exists(), "Deduplicated output directory should exist"
+
+        # Check ID generator file based on configuration
+        id_generator_file = self.output_dir / "semantic_id_generator.json"
+        if self.use_id_generator:
+            assert id_generator_file.exists(), "ID generator file should exist when use_id_generator=True"
         else:
-            assert not (output_dir / "semantic_id_generator.json").exists()
+            assert not id_generator_file.exists(), "ID generator file should not exist when use_id_generator=False"
 
-        # Validate data in each directory with pd.read_parquet
-        # ID field used in intermediate stages (embeddings, kmeans, pairwise)
-        intermediate_id_field = "id" if not use_id_generator else "_curator_dedup_id"
+    def test_directory_schemas_and_counts(self) -> None:
+        """Test that all directories have the expected schema and number of rows."""
+        assert self.cache_dir is not None, "Cache directory should be set"
+        assert self.output_dir is not None, "Output directory should be set"
+        assert self.use_id_generator is not None, "ID generator flag should be set"
+
         # 1. Check embeddings data
-        embeddings_df = pd.read_parquet(cache_dir / "embeddings")
-        expected_embedding_cols = {intermediate_id_field, "embeddings"}
+        embeddings_df = pd.read_parquet(self.cache_dir / "embeddings")
+        # Embeddings always has the ID field used by the workflow and embeddings
+        if self.use_id_generator:
+            expected_embedding_cols = {"_curator_dedup_id", "embeddings"}
+        else:
+            expected_embedding_cols = {"id", "embeddings"}
         assert set(embeddings_df.columns) >= expected_embedding_cols, (
             f"Embeddings missing columns: {expected_embedding_cols - set(embeddings_df.columns)}"
         )
         assert len(embeddings_df) == 7, f"Expected 7 embedding records, got {len(embeddings_df)}"
 
-        # 2. Check kmeans results data
-        kmeans_df = pd.read_parquet(cache_dir / "semantic_dedup" / "kmeans_results")
-        expected_kmeans_cols = {intermediate_id_field, "embeddings", "centroid"}
+        # 2. Check kmeans results data - preserves all embedding columns plus centroid
+        kmeans_df = pd.read_parquet(self.cache_dir / "semantic_dedup" / "kmeans_results")
+        if self.use_id_generator:
+            expected_kmeans_cols = {"_curator_dedup_id", "embeddings", "centroid"}
+        else:
+            expected_kmeans_cols = {"id", "embeddings", "centroid"}
         assert set(kmeans_df.columns) >= expected_kmeans_cols, (
             f"KMeans missing columns: {expected_kmeans_cols - set(kmeans_df.columns)}"
         )
         assert len(kmeans_df) == 7, f"Expected 7 kmeans records, got {len(kmeans_df)}"
 
         # 3. Check pairwise results data
-        pairwise_df = pd.read_parquet(cache_dir / "semantic_dedup" / "pairwise_results")
-        expected_pairwise_cols = {intermediate_id_field}
+        pairwise_df = pd.read_parquet(self.cache_dir / "semantic_dedup" / "pairwise_results")
+        # Pairwise always has id, max_id, cosine_sim_score
+        # Plus _curator_dedup_id only if it was present in the input (from kmeans stage)
+        expected_pairwise_cols = {"id", "max_id", "cosine_sim_score"}
+        if self.use_id_generator:
+            expected_pairwise_cols.add("_curator_dedup_id")
         assert set(pairwise_df.columns) >= expected_pairwise_cols, (
             f"Pairwise missing columns: {expected_pairwise_cols - set(pairwise_df.columns)}"
         )
         assert len(pairwise_df) == 7, f"Expected 7 pairwise records, got {len(pairwise_df)}"
 
         # 4. Check duplicates data (in output directory only)
-        duplicates_output_df = pd.read_parquet(output_dir / "duplicates")
+        duplicates_output_df = pd.read_parquet(self.output_dir / "duplicates")
         expected_duplicates_cols = {"id"}
         assert set(duplicates_output_df.columns) >= expected_duplicates_cols, (
             f"Output duplicates missing columns: {expected_duplicates_cols - set(duplicates_output_df.columns)}"
@@ -215,7 +245,7 @@ class TestTextSemanticDeduplicationWorkflow:
         )
 
         # 5. Check final deduplicated data
-        deduplicated_df = pd.read_parquet(output_dir / "deduplicated")
+        deduplicated_df = pd.read_parquet(self.output_dir / "deduplicated")
         expected_dedup_cols = {"id", "text"}
         assert set(deduplicated_df.columns) >= expected_dedup_cols, (
             f"Deduplicated missing columns: {expected_dedup_cols - set(deduplicated_df.columns)}"
