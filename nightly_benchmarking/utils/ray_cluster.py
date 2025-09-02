@@ -32,6 +32,7 @@ def start_ray_head(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         enable_object_spilling=enable_object_spilling,
+        ray_dashboard_host="0.0.0.0",  # noqa: S104
     )
     # Redirect Ray startup output to log file if provided, otherwise suppress it
     import sys

@@ -42,6 +42,7 @@ class TextDuplicatesRemovalWorkflow:
     input_files_per_partition: int | None = None
     input_blocksize: str | None = None
     input_file_extensions: list[str] | None = None
+    input_limit: int | None = None
     input_kwargs: dict[str, Any] | None = None
 
     # ids_to_remove args
@@ -82,6 +83,7 @@ class TextDuplicatesRemovalWorkflow:
                     files_per_partition=self.input_files_per_partition,
                     blocksize=self.input_blocksize,
                     file_extensions=self.input_file_extensions,
+                    limit=self.input_limit,
                     storage_options=(self.input_kwargs or {}).get("storage_options"),
                 )
             )

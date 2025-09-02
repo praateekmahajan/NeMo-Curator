@@ -94,7 +94,8 @@ class MlflowSink:
         try:
             if self._child_run_id is not None and os.path.exists(path):
                 # Child run is already active, just log directly
-                self.mlflow.log_artifact(path)
+                # self.mlflow.log_artifact(path)  # noqa: ERA001
+                logger.warning(f"Skipping artifact logging to MLflow: {path}")
         except Exception as e:  # noqa: BLE001
             logger.error(f"Failed to log artifact to MLflow child run: {e}")
 
