@@ -29,7 +29,7 @@ version = { attr = "nemo_curator.package_info.__version__" }
 
 [project]
 name = "nemo-curator"
-version = "0.1.0"
+dynamic = ["version"]
 authors = [
     { name = "Ayush Dattagupta", email = "adattagupta@nvidia.com" },
     { name = "Abhinav Garg", email = "abhgarg@nvidia.com" },
@@ -233,6 +233,7 @@ fixable = ["ALL"]
 
 
 [tool.ruff.lint.extend-per-file-ignores]
+"nemo_curator/__init__.py" = ["F401"]
 "examples/**" = [
     "INP001", # No __init__.py is required
 ]
