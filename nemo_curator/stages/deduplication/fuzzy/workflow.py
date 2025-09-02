@@ -221,7 +221,8 @@ class FuzzyDeduplicationWorkflow:
                     num_bands=self.num_bands,
                     minhashes_per_band=self.minhashes_per_band,
                     output_path=self.cache_path,
-                    read_kwargs=self.read_kwargs,
+                    # Reading minhashes from cache_path
+                    read_kwargs=self.cache_kwargs,
                     write_kwargs=self.cache_kwargs,
                     bands_per_iteration=self.bands_per_iteration,
                     rmm_pool_size="auto",
@@ -236,17 +237,17 @@ class FuzzyDeduplicationWorkflow:
             stages=[
                 BucketsToEdgesStage(
                     output_path=self.cache_path,
-                    read_kwargs=self.read_kwargs,
+                    read_kwargs=self.cache_kwargs,
                     write_kwargs=self.cache_kwargs,
                 ),
                 ConnectedComponentsStage(
                     output_path=self.cache_path,
-                    read_kwargs=self.read_kwargs,
+                    read_kwargs=self.cache_kwargs,
                     write_kwargs=self.cache_kwargs,
                 ),
                 IdentifyDuplicatesStage(
                     output_path=self.output_path,
-                    read_kwargs=self.read_kwargs,
+                    read_kwargs=self.cache_kwargs,
                     write_kwargs=self.write_kwargs,
                     rmm_pool_size="auto",
                     spill_memory_limit="auto",
@@ -290,14 +291,14 @@ class FuzzyDeduplicationWorkflow:
             start_time = time.time()
             minhash_pipeline.run(executor=executor, initial_tasks=initial_tasks)
             minhash_end_time = time.time()
-            logger.info(f"Minhash pipeline completed in {minhash_end_time - start_time} seconds")
+            logger.info(f"Minhash pipeline completed in {(minhash_end_time - start_time):.2f} seconds")
 
             lsh_pipeline = self._create_lsh_pipeline()
             lsh_start_time = time.time()
             # LSH stage generates it's own input tasks from the minhash directory
             lsh_tasks = lsh_pipeline.run(executor=executor, initial_tasks=None)
             lsh_end_time = time.time()
-            logger.info(f"LSH pipeline completed in {lsh_end_time - lsh_start_time} seconds")
+            logger.info(f"LSH pipeline completed in {(lsh_end_time - lsh_start_time):.2f} seconds")
 
             valid_lsh_tasks = [task for task in lsh_tasks if task._metadata.get("num_docs", 0) > 0]
             if len(valid_lsh_tasks) == 0:
@@ -310,7 +311,7 @@ class FuzzyDeduplicationWorkflow:
                 )
                 connected_components_end_time = time.time()
                 logger.info(
-                    f"Connected components pipeline completed in {connected_components_end_time - connected_components_start_time} seconds"
+                    f"Connected components pipeline completed in {(connected_components_end_time - connected_components_start_time):.2f} seconds"
                 )
                 num_removed_documents = sum(
                     task._metadata.get("num_removal_ids", 0) for task in connected_components_tasks
@@ -329,6 +330,6 @@ class FuzzyDeduplicationWorkflow:
                 )
                 logger.info(f"Id generator written to {id_generator_path}")
             end_time = time.time()
-            logger.info(f"Fuzzy deduplication pipeline completed in {end_time - start_time} seconds")
+            logger.info(f"Fuzzy deduplication pipeline completed in {(end_time - start_time):.2f} seconds")
         finally:
             kill_id_generator_actor()

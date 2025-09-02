@@ -23,7 +23,7 @@ from rapidsmpf.utils.cudf import pylibcudf_to_cudf_dataframe
 
 from nemo_curator.stages.deduplication.fuzzy.utils import CURATOR_DEFAULT_MINHASH_FIELD, CURATOR_LSH_BUCKET_FIELD
 from nemo_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
-from nemo_curator.stages.shuffler.rapidsmpf_shuffler import BulkRapidsMPFShuffler
+from nemo_curator.stages.deduplication.shuffle_utils.rapidsmpf_shuffler import BulkRapidsMPFShuffler
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -245,6 +245,8 @@ class LSHActor(BulkRapidsMPFShuffler):
         -------
             DataFrame with bucket IDs and lists of document IDs.
         """
+        if len(df) == 0:
+            return df
         if not include_singles:
             # TODO: Add support for generating LSH index with single-document buckets that can be reused in incremental runs
             # Find bucket_ids that appear more than once (have multiple documents)

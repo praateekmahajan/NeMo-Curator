@@ -44,6 +44,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: recursive
 
       - name: Get PR info
         id: get-pr-info
@@ -136,6 +137,8 @@ jobs:
       && !cancelled()
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Optionally free up space on Ubuntu
         run: |
           sudo rm -rf /usr/share/dotnet
@@ -150,8 +153,9 @@ jobs:
         run: |
           pip install -U pip
           pip install --no-cache-dir ".[text]"
+          pip install --no-cache-dir ".[audio]"
           pip install --no-cache-dir ".[video]"
-          pip install --no-cache-dir "internvideo2-multi-modality @ git+https://github.com/suiyoubi/InternVideo.git@curator#subdirectory=InternVideo2/multi_modality"
+          pip install --no-cache-dir ".[internvideo2]"
           pip install --no-cache-dir --group test
 
       - name: Run tests (CPU)
@@ -177,44 +181,46 @@ jobs:
             ./.coverage
           include-hidden-files: true
 
-  # cicd-gpu-tests:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       include:
-  #         - script: L0_Unit_Test_GPU
-  #           runner: self-hosted-nemo
-  #   needs: [cicd-cpu-tests]
-  #   runs-on: ${{ matrix.runner }}
-  #   name: ${{ matrix.script }}
-  #   environment: nemo-ci
-  #   if: |
-  #     (
-  #       success()
-  #       || needs.pre-flight.outputs.is_ci_workload == 'true'
-  #       || needs.pre-flight.outputs.force_run_all == 'true'
-  #     )
-  #     && !cancelled()
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #     - name: main
-  #       uses: ./.github/actions/test-template
-  #       with:
-  #         script: ${{ matrix.script }}
-  #         is_unit_test: "false"
-  #         has-azure-credentials: "true"
-  #         azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-  #         azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-  #         azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  #         PAT: ${{ secrets.PAT }}
-  #         timeout: 20
+  cicd-gpu-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - script: L0_Unit_Test_GPU
+            runner: self-hosted-nemo
+    needs: [cicd-cpu-tests]
+    runs-on: ${{ matrix.runner }}
+    name: ${{ matrix.script }}
+    environment: nemo-ci
+    if: |
+      (
+        success()
+        || needs.pre-flight.outputs.is_ci_workload == 'true'
+        || needs.pre-flight.outputs.force_run_all == 'true'
+      )
+      && !cancelled()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: main
+        uses: ./.github/actions/test-template
+        with:
+          script: ${{ matrix.script }}
+          is_unit_test: "false"
+          has-azure-credentials: "true"
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          PAT: ${{ secrets.PAT }}
+          timeout: 20
 
   Nemo_CICD_Test:
     needs:
       - pre-flight
       - cicd-cpu-tests
-      # - cicd-gpu-tests
+      - cicd-gpu-tests
     if: |
       (
         needs.pre-flight.outputs.docs_only == 'true'

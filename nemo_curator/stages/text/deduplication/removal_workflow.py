@@ -42,7 +42,7 @@ class TextDuplicatesRemovalWorkflow:
     input_files_per_partition: int | None = None
     input_blocksize: str | None = None
     input_file_extensions: list[str] | None = None
-    input_limit: int | None = None
+    input_task_limit: int | None = None
     input_kwargs: dict[str, Any] | None = None
 
     # ids_to_remove args
@@ -83,8 +83,8 @@ class TextDuplicatesRemovalWorkflow:
                     files_per_partition=self.input_files_per_partition,
                     blocksize=self.input_blocksize,
                     file_extensions=self.input_file_extensions,
-                    limit=self.input_limit,
                     storage_options=(self.input_kwargs or {}).get("storage_options"),
+                    limit=self.input_task_limit,
                 )
             )
         else:
@@ -137,7 +137,7 @@ class TextDuplicatesRemovalWorkflow:
             write_stage(
                 path=self.output_path,
                 **({"file_extension": self.output_file_extension} if self.output_file_extension else {}),
-                write_kwargs=self.output_kwargs,
+                write_kwargs=self.output_kwargs or {},
                 fields=self.output_fields,
                 **({"mode": self.output_mode} if self.output_mode else {}),
             )
@@ -153,6 +153,11 @@ class TextDuplicatesRemovalWorkflow:
             description="Text duplicates removal workflow",
             stages=self._generate_stages(initial_tasks),
         )
+        if self.input_task_limit is not None and len(initial_tasks) > self.input_task_limit:
+            logger.warning(
+                f"Initial tasks provided ({len(initial_tasks)}) is greater than input_task_limit ({self.input_task_limit}), truncating to {self.input_task_limit}"
+            )
+            initial_tasks = initial_tasks[: self.input_task_limit]
 
         if executor is None:
             from nemo_curator.backends.xenna import XennaExecutor
