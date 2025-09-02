@@ -27,7 +27,7 @@ from huggingface_hub import snapshot_download
 
 from nemo_curator.stages.text.deduplication.semantic import TextSemanticDeduplicationWorkflow
 
-# Pre-download the model to avoid rate limiting during distributed execution
+# Pre-download the model to avoid rate limiting in CI. If it fails, skip the test.
 try:
     snapshot_download(
         repo_id="sentence-transformers/all-MiniLM-L6-v2",
