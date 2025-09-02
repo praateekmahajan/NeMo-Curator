@@ -32,7 +32,7 @@ entries:
       --use-initial-tasks
     timeout_s: 7200
     ray:
-      num_cpus: 64
+      num_cpus: 32
       num_gpus: 0
       enable_object_spilling: false
 
@@ -52,7 +52,7 @@ entries:
       --blocksize 1GiB
     timeout_s: 7200
     ray:
-      num_cpus: 64
+      num_cpus: 32
       num_gpus: 0
       enable_object_spilling: false
 
@@ -73,7 +73,7 @@ entries:
       --use-initial-tasks
     timeout_s: 7200
     ray:
-      num_cpus: 64
+      num_cpus: 32
       num_gpus: 0
       enable_object_spilling: false
 
@@ -93,6 +93,6 @@ entries:
       --blocksize 1GiB
     timeout_s: 7200
     ray:
-      num_cpus: 64
+      num_cpus: 32
       num_gpus: 0
       enable_object_spilling: false

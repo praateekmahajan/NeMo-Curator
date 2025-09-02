@@ -71,7 +71,7 @@ def run_removal_benchmark(  # noqa: PLR0913
             input_id_field=id_field,
             input_files_per_partition=files_per_partition,
             input_blocksize=blocksize,
-            input_limit=limit,
+            input_task_limit=limit,
             ids_to_remove_duplicate_id_field=duplicate_id_field,
             output_filetype=output_filetype,
             id_generator_path=id_generator_path,

@@ -24,6 +24,7 @@ from typing import Any
 import numpy as np
 from loguru import logger
 
+from nemo_curator.tasks import Task
 from nemo_curator.tasks.utils import TaskPerfUtils
 from nightly_benchmarking.sinks.factory import build_sink
 from nightly_benchmarking.utils.datasets import DatasetResolver
@@ -39,6 +40,21 @@ from nightly_benchmarking.utils.ray_cluster import (
 )
 
 
+def aggregate_task_metrics(tasks: list[Task], prefix: str | None = None) -> dict[str, Any]:
+    metrics = {}
+    tasks_metrics = TaskPerfUtils.collect_stage_metrics(tasks)
+    # For each of the metric compute mean/std/sum and flatten the dict
+    for stage_name, stage_data in tasks_metrics.items():
+        for metric_name, values in stage_data.items():
+            for agg_name, agg_func in [("sum", np.sum), ("mean", np.mean), ("std", np.std)]:
+                stage_key = stage_name if prefix is None else f"{prefix}_{stage_name}"
+                if len(values) > 0:
+                    metrics[f"{stage_key}_{metric_name}_{agg_name}"] = float(agg_func(values))
+                else:
+                    metrics[f"{stage_key}_{metric_name}_{agg_name}"] = 0.0
+    return metrics
+
+
 def get_script_params_metrics(benchmark_results_dir: Path) -> dict[str, Any]:
     with open(benchmark_results_dir / "params.json") as f:
         script_params = json.load(f)
@@ -47,16 +63,11 @@ def get_script_params_metrics(benchmark_results_dir: Path) -> dict[str, Any]:
 
     with open(benchmark_results_dir / "tasks.pkl", "rb") as f:
         script_tasks = pickle.load(f)  # noqa: S301
-
-    tasks_metrics = TaskPerfUtils.collect_stage_metrics(script_tasks)
-    # For each of the metric compute mean/std/sum and flatten the dict
-    for stage_name, stage_data in tasks_metrics.items():
-        for metric_name, values in stage_data.items():
-            for agg_name, agg_func in [("sum", np.sum), ("mean", np.mean), ("std", np.std)]:
-                if len(values) > 0:
-                    script_metrics[f"{stage_name}_{metric_name}_{agg_name}"] = float(agg_func(values))
-                else:
-                    script_metrics[f"{stage_name}_{metric_name}_{agg_name}"] = 0.0
+        if isinstance(script_tasks, list):
+            script_metrics.update(aggregate_task_metrics(script_tasks, prefix="task"))
+        elif isinstance(script_tasks, dict):
+            for pipeline_name, pipeline_tasks in script_tasks.items():
+                script_metrics.update(aggregate_task_metrics(pipeline_tasks, prefix=pipeline_name.lower()))
 
     return {"params": script_params, "metrics": script_metrics}
 

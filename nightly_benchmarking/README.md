@@ -1,346 +1,146 @@
-# NeMo-Curator Nightly Benchmarking Framework
+## NeMo-Curator Nightly Benchmarking
 
-A robust benchmarking framework for running systematic performance tests on ray-curator with comprehensive logging, experiment tracking, and error handling.
+Run a matrix of benchmark scripts with per-entry Ray isolation, timeouts, environment capture, and pluggable metric sinks.
 
-## Quick Start
+### Quick start
 
 ```bash
-# Basic usage
+# Minimal
 python -m nightly_benchmarking.run \
-    --matrix nightly_benchmarking/matrix.yaml \
-    --datasets nightly_benchmarking/dataset_paths.json \
-```
-```
-# With mlflow and a session name
-MLFLOW_TRACKING_URI=http://your-mlflow:3569 python -m nightly_benchmarking.run \
-    --matrix nightly_benchmarking/dedup_removal_benchmark_matrix.yaml \
-    --datasets nightly_benchmarking/dataset_paths.json \
-    --sink mlflow \
-    --session-name dedup_removal
-```
+  --matrix nightly_benchmarking/matrix.yaml \
+  --datasets nightly_benchmarking/dataset_paths.json
 
-## Overview
-
-The benchmarking framework consists of:
-
-- **Driver** (`run.py`): Orchestrates benchmark execution with Ray isolation
-- **Matrix Configuration** (YAML): Defines what benchmarks to run and their parameters
-- **Benchmark Scripts**: Individual performance tests (e.g., `removal_benchmark.py`)
-- **Sinks**: Result tracking (MLflow, W&B, or none)
-- **Utilities**: Ray cluster management, dataset resolution, logging
-
-## Architecture
-
-```
-Session (nightly-run-20231201-143022)
-├── Entry 1 (removal_curator_dedup_id_xenna)
-│   ├── scratch/           # Temporary data (auto-cleaned)
-│   ├── ray_cluster/       # Ray cluster files
-│   ├── logs/              # stdout/stderr logs
-│   ├── artifacts/         # Environment snapshots
-│   └── benchmark_results/ # Performance results (see format below)
-└── Entry 2 (removal_curator_dedup_id_ray_data)
-    ├── scratch/
-    ├── ray_cluster/
-    ├── logs/
-    ├── artifacts/
-    └── benchmark_results/
+# With MLflow and a custom session name
+MLFLOW_TRACKING_URI=http://your-mlflow:8265 \
+python -m nightly_benchmarking.run \
+  --matrix nightly_benchmarking/matrix.yaml \
+  --datasets nightly_benchmarking/dataset_paths.json \
+  --sink mlflow \
+  --session-name dedup_removal
 ```
 
-## Matrix Configuration
+### How it works
 
-Create a YAML file defining your benchmark matrix:
+- **Isolated runs**: For each matrix entry the driver starts a fresh Ray head, runs the command, then stops Ray.
+- **Placeholders**: Command args can reference `{dataset:name,format}` and `{session}/...` paths.
+- **Environment capture**: Saves `pip-freeze.txt`, `conda-explicit.txt` (if available), and `sys-env.json` per entry.
+- **Results**: Scripts write standardized results; the driver aggregates and logs params/metrics to the chosen sink.
+
+### Matrix YAML
+
+Required top-level fields and supported options:
 
 ```yaml
-# Example: removal_benchmark_matrix.yaml
-default_timeout_s: 3600
 results_dir: /path/to/results
-artifacts_dir: /path/to/artifacts
+default_timeout_s: 7200           # Optional; per-entry timeout overrides this
+delete_scratch: true              # Optional; auto-delete {session}/scratch after run
 
-# MLflow configuration
+# Optional sinks (passed through to the sink factory)
 mlflow:
   tracking_uri: ${MLFLOW_TRACKING_URI}
-  experiment: ray-curator-removal
-
-# Optional Slack notifications
-slack:
-  webhook_env: SLACK_WEBHOOK_URL
+  experiment: ray-curator-xyz
+wandb: {}
+slack: {}
 
 entries:
-  - name: removal_curator_dedup_id_xenna
-    script: removal_benchmark.py
+  - name: xyz_id_xenna
+    script: some_benchmark.py   # Resolved under nightly_benchmarking/scripts by default
+    script_base_dir: nightly_benchmarking/scripts  # Optional override
     args: >-
-      --input-path {dataset:cleaned_cc,jsonl}
-      --ids-to-remove-path /path/to/duplicates
+      --input-path {dataset:dataset_name,jsonl}
       --output-path {session}/scratch
       --executor xenna
-      --id-field _curator_dedup_id
-      --files-per-partition 1
-      --max-files 100
-    timeout_s: 1800
+    timeout_s: 1800                # Optional per-entry timeout
+    delete_scratch: true           # Optional per-entry override
     ray:
       num_cpus: 128
       num_gpus: 0
       enable_object_spilling: false
 ```
 
-### Template Placeholders
+Notes:
+- `${ENV_VAR}` in the YAML is resolved at load time and must be set; otherwise YAML loading fails.
+- Only `script` is supported (no custom `cmd` field). The driver appends `--benchmark-results-path {session}/benchmark_results` to the command.
 
-- `{dataset:name,format}`: Resolved from dataset_paths.json
-- `{session}`: Replaced with entry directory path
-- `${ENV_VAR}`: Environment variable substitution
+### Placeholders and datasets
 
-## Dataset Configuration
+- **`{dataset:name,format}`**: Resolved via `dataset_paths.json`.
+- **`{session}/...`**: Expanded to the entry directory path.
 
-Create `dataset_paths.json` with dataset locations:
+Example `dataset_paths.json`:
 
 ```json
 {
-  "cleaned_cc": {
-    "jsonl": "/path/to/cleaned_common_crawl/",
-    "parquet": "/path/to/cleaned_common_crawl_parquet/"
-  },
-  "another_dataset": {
-    "jsonl": "/path/to/other/data/"
+  "dataset_name": {
+    "jsonl": "/path/to/dataset_json/",
+    "parquet": "/path/to/dataset_parquet/"
   }
 }
 ```
 
-## Writing Benchmark Scripts
+### Script contract (what your benchmark must do)
 
-Your benchmark script must:
+- Accept `--benchmark-results-path` (required).
+- Write the following files to that directory:
+  - `params.json`: your input parameters.
+  - `metrics.json`: include at least `is_success: true|false` plus any metrics.
+  - `tasks.pkl`: pickled task objects; the driver aggregates per-stage metrics (sum/mean/std).
+- Exit with code `0` on success, non-zero on failure.
 
-1. **Accept `--benchmark-results-path`** as a required argument
-2. **Write results** in the expected format to that path
-3. **Return proper exit codes**: 0 for success, non-zero for failure
-
-### Required Result Format
-
-Write these files to `benchmark_results_path`:
-
-#### `params.json` - Input Parameters
-```json
-{
-  "executor": "xenna",
-  "input_path": "/path/to/input",
-  "id_field": "_curator_dedup_id",
-  "files_per_partition": 1,
-  "max_files": 100
-}
-```
-
-#### `metrics.json` - Performance Metrics
-```json
-{
-  "is_success": true,
-  "time_taken": 45.2,
-  "num_removed": 87932,
-  "num_output_tasks": 100,
-  "stage_file_partitioning_process_time_mean": 2.3,
-  "stage_file_partitioning_process_time_std": 0.5,
-  "stage_jsonl_reader_process_time_sum": 120.4
-}
-```
-
-#### `tasks.pkl` - Detailed Task Data
-Binary pickle file containing task objects with detailed performance metrics. Used by `TaskPerfUtils.collect_stage_metrics()` for stage-level analysis.
-
-### Example Benchmark Script Structure
+Minimal skeleton:
 
 ```python
-#!/usr/bin/env python3
-import argparse
-import json
-import pickle
+import argparse, json, pickle
 from pathlib import Path
 
-def run_benchmark(args) -> dict:
-    """Run your benchmark and return results."""
-    try:
-        # Your benchmark logic here
-        success = True
-        metrics = {"time_taken": 45.2, "num_removed": 1000}
-        tasks = []  # Your task objects
-    except Exception:
-        success = False
-        metrics = {}
-        tasks = []
-
-    return {
-        "params": vars(args),
-        "metrics": {"is_success": success, **metrics},
-        "tasks": tasks
-    }
-
-def write_results(results: dict, output_path: str):
-    """Write results in expected format."""
-    Path(output_path).mkdir(parents=True, exist_ok=True)
-
-    with open(f"{output_path}/params.json", "w") as f:
-        json.dump(results["params"], f, indent=2)
-    with open(f"{output_path}/metrics.json", "w") as f:
-        json.dump(results["metrics"], f, indent=2)
-    with open(f"{output_path}/tasks.pkl", "wb") as f:
-        pickle.dump(results["tasks"], f)
-
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--benchmark-results-path", required=True)
-    # Add your other arguments...
-    args = parser.parse_args()
-
-    results = run_benchmark(args)
-    write_results(results, args.benchmark_results_path)
-
-    # Return proper exit code
-    return 0 if results["metrics"]["is_success"] else 1
+    p = argparse.ArgumentParser()
+    p.add_argument("--benchmark-results-path", required=True)
+    args = p.parse_args()
+    out = Path(args.benchmark_results_path); out.mkdir(parents=True, exist_ok=True)
+    Path(out/"params.json").write_text(json.dumps({}))
+    Path(out/"metrics.json").write_text(json.dumps({"is_success": true}))
+    with open(out/"tasks.pkl", "wb") as f: pickle.dump([], f)
+    return 0
 
 if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-## Logging Output
-
-The framework provides clean hierarchical logging:
-
-```
-Started session nightly-run-20231201-143022...
-	Running removal_curator_dedup_id_xenna
-		Running command python nightly_benchmarking/scripts/removal_benchmark.py ...
-		✅ Run Succeeded in 45.2 seconds
-		Logs found in /path/to/logs
-	Running removal_curator_dedup_id_ray_data
-		Running command python nightly_benchmarking/scripts/removal_benchmark.py ...
-		❌ Run Failed in 12.3 seconds
-		Logs found in /path/to/logs
-```
-
-## Experiment Tracking
-
-### MLflow Integration
-
-Results are automatically tracked in MLflow with:
-- **Parent Run**: Session-level tracking
-- **Child Runs**: Individual entry results
-- **Parameters**: All input parameters logged
-- **Metrics**: Performance metrics logged
-- **Artifacts**: Environment snapshots (pip freeze, conda list)
-
-### Accessing Results
-
-- View experiments at your MLflow UI
-- Session and run URLs are printed during execution
-- Results also saved locally in `results_dir`
-
-## Error Handling
-
-The framework handles errors at multiple levels:
-
-1. **Script-level failures**: Script returns non-zero exit code
-2. **Driver-level failures**: Infrastructure issues (Ray cluster, directories, etc.)
-3. **Session resilience**: Continues processing after individual entry failures
-
-All errors are logged with full context and tracebacks.
-
-## Command Line Options
+### CLI
 
 ```bash
-python -m nightly_benchmarking.run [OPTIONS]
-
-Options:
-  --matrix PATH          Path to YAML matrix config (required)
-  --datasets PATH        Path to dataset_paths.json (required)
-  --sink {mlflow,wandb,none}  Metrics sink (default: none)
-  --session-name NAME    Custom session name (default: nightly-run-<timestamp>)
+python -m nightly_benchmarking.run \
+  --matrix PATH_TO_YAML \
+  --datasets PATH_TO_dataset_paths.json \
+  [--sink {mlflow,wandb,none}] \
+  [--session-name NAME]
 ```
 
-## Environment Variables
-
-- `MLFLOW_TRACKING_URI`: MLflow server URL
-- `RAY_ADDRESS`: Automatically managed by framework
-
-## Directory Structure
+### Output layout (per entry)
 
 ```
-results_dir/
-└── nightly-run-20231201-143022/          # Session directory
-    ├── removal_curator_dedup_id_xenna/    # Entry directory
-    │   ├── scratch/                       # Temporary workspace (cleaned)
-    │   ├── ray_cluster/                   # Ray files (cleaned)
-    │   ├── logs/                          # Execution logs
-    │   │   ├── stdout.log
-    │   │   ├── stderr.log
-    │   │   └── ray_startup.log
-    │   ├── artifacts/                     # Environment snapshots
-    │   │   ├── pip-freeze.txt
-    │   │   └── conda-explicit.txt
-    │   ├── benchmark_results/             # Your benchmark output
-    │   │   ├── params.json                # Input parameters
-    │   │   ├── metrics.json               # Performance metrics
-    │   │   └── tasks.pkl                  # Detailed task data
-    │   └── results.jsonl                  # Normalized driver results
-    └── removal_curator_dedup_id_ray_data/ # Another entry...
+<results_dir>/<session_name>/<entry_name>/
+├── scratch/                       # Temporary workspace (deleted if delete_scratch=true)
+├── ray_cluster/                   # Ray debug artifacts
+├── logs/                          # stdout/stderr and ray startup logs
+│   ├── stdout.log
+│   ├── stderr.log
+│   └── ray_startup.log
+├── artifacts/                     # Environment snapshots
+│   ├── pip-freeze.txt
+│   ├── conda-explicit.txt
+│   └── sys-env.json
+├── benchmark_results/             # Script outputs (required by contract)
+│   ├── params.json
+│   ├── metrics.json
+│   └── tasks.pkl
+└── results.json                   # Normalized driver result
 ```
 
-## Best Practices
+### Troubleshooting
 
-1. **Resource Management**: Each entry gets isolated Ray cluster
-2. **Timeout Configuration**: Set appropriate timeouts for long-running benchmarks
-3. **Result Validation**: Always include `is_success` in metrics
-4. **Error Reporting**: Use proper exit codes and descriptive error messages
-5. **Data Cleanup**: Temporary data in `scratch/` is auto-cleaned
-6. **Reproducibility**: All parameters and environment info captured
-
-## Troubleshooting
-
-### Common Issues
-
-- **Ray connection errors**: Check that entries don't conflict on ports/resources
-- **MLflow errors**: Ensure `MLFLOW_TRACKING_URI` is accessible
-- **Directory permissions**: Verify write access to `results_dir`
-- **Timeouts**: Increase `timeout_s` for long-running benchmarks
-
-### Debug Information
-
-- **Logs**: Check `logs/stderr.log` for detailed error messages
-- **Ray logs**: Ray cluster logs in `logs/ray_startup.log`
-- **Environment**: Captured in `artifacts/` for reproducibility
-- **MLflow**: View experiment tracking for parameter/metric history
-
-## Advanced Usage
-
-### Custom Sinks
-
-Extend the sink interface to integrate with other tracking systems:
-
-```python
-# nightly_benchmarking/sinks/custom_sink.py
-class CustomSink:
-    def start_session(self, session_name: str): pass
-    def start_run(self, run_name: str): pass
-    def log_params(self, params: dict): pass
-    def log_metrics(self, metrics: dict): pass
-    def log_artifact(self, path: str): pass
-    def end_run(self, success: bool): pass
-    def end_session(self, success: bool): pass
-```
-
-### Matrix Parameterization
-
-Use YAML anchors and references for complex configurations:
-
-```yaml
-# Define reusable configs
-ray_config: &default_ray
-  num_cpus: 128
-  num_gpus: 0
-
-entries:
-  - name: test_small
-    ray: *default_ray
-    args: --max-files 10
-
-  - name: test_large
-    ray: *default_ray
-    args: --max-files 1000
-```
+- Set appropriate `timeout_s`/`default_timeout_s` for long runs.
+- Ensure `${ENV_VAR}` used in YAML is exported; otherwise config loading fails.
+- If datasets fail to resolve, check names/formats in `dataset_paths.json`.
+- Inspect `logs/stderr.log` and `logs/ray_startup.log` for failures.
