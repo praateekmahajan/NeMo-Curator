@@ -23,7 +23,21 @@ from nemo_curator.backends.experimental.ray_data import RayDataExecutor
 from nemo_curator.backends.xenna import XennaExecutor
 
 _ = pytest.importorskip("cudf")
+from huggingface_hub import snapshot_download
+
 from nemo_curator.stages.text.deduplication.semantic import TextSemanticDeduplicationWorkflow
+
+# Pre-download the model to avoid rate limiting during distributed execution
+try:
+    snapshot_download(
+        repo_id="sentence-transformers/all-MiniLM-L6-v2",
+        cache_dir=None,
+        token=None,
+        local_files_only=False,
+    )
+except Exception as e:  # noqa: BLE001
+    msg = f"Failed to download sentence-transformers/all-MiniLM-L6-v2 due to {e}"
+    pytest.skip(msg)
 
 
 def create_data_with_duplicates(input_dir: Path) -> pd.DataFrame:
@@ -94,7 +108,6 @@ class TestTextSemanticDeduplicationWorkflow:
 
         # Create test data with duplicates
         request.cls.expected_df = create_data_with_duplicates(request.cls.input_dir)
-
         # Run workflow with duplicate removal enabled using the configured executor
         workflow = TextSemanticDeduplicationWorkflow(
             input_path=str(request.cls.input_dir),
