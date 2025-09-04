@@ -57,8 +57,8 @@ class RayDataExecutor(BaseExecutor):
             return []
 
         register_loguru_serializer()
+        # This prevents verbose logging from Ray Data about serialization of the dataclass
         DataContext.get_current().enable_fallback_to_arrow_object_ext_type = True
-
         # Initialize with initial tasks if provided, otherwise start with EmptyTask
         tasks: list[Task] = initial_tasks if initial_tasks else [EmptyTask]
         output_tasks: list[Task] = []
