@@ -16,83 +16,22 @@ slack:
 
 entries:
   # Ray Data executor with curator dedup IDs
-  - name: removal_curator_dedup_id_ray_data_1gb_use_initial
+  - name: removal_curator_dedup_id_ray_data_1fpp_use_file_partitioning_raydata_blocksize_1
     script: removal_benchmark.py
     args: >-
-      --input-path {dataset:cleaned_cc,jsonl}
-      --ids-to-remove-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/FuzzyDuplicateIds/
-      --id-generator-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/fuzzy_id_generator.json
+      --input-path {dataset:cleaned_cc,parquet}
+      --ids-to-remove-path /raid/praateekm/test_ray_fuzzy/output/FuzzyDuplicateIds/
+      --id-generator-path /raid/praateekm/test_ray_fuzzy/output/fuzzy_id_generator.json
       --output-path {session}/scratch
       --executor ray_data
-      --input-filetype jsonl
+      --input-filetype parquet
       --output-filetype parquet
       --id-field _curator_dedup_id
       --duplicate-id-field _curator_dedup_id
-      --blocksize 1GiB
-      --use-initial-tasks
+      --files-per-partition 1
+      --use-ray-data-settings
     timeout_s: 7200
     ray:
-      num_cpus: 32
-      num_gpus: 0
-      enable_object_spilling: false
-
-  # Ray Data executor with curator dedup IDs
-  - name: removal_curator_dedup_id_ray_data_1gb_use_file_partitioning
-    script: removal_benchmark.py
-    args: >-
-      --input-path {dataset:cleaned_cc,jsonl}
-      --ids-to-remove-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/FuzzyDuplicateIds/
-      --id-generator-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/fuzzy_id_generator.json
-      --output-path {session}/scratch
-      --executor ray_data
-      --input-filetype jsonl
-      --output-filetype parquet
-      --id-field _curator_dedup_id
-      --duplicate-id-field _curator_dedup_id
-      --blocksize 1GiB
-    timeout_s: 7200
-    ray:
-      num_cpus: 32
-      num_gpus: 0
-      enable_object_spilling: false
-
-  # Xenna executor with curator dedup IDs
-  - name: removal_curator_dedup_id_xenna_1gb_use_initial
-    script: removal_benchmark.py
-    args: >-
-      --input-path {dataset:cleaned_cc,jsonl}
-      --ids-to-remove-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/FuzzyDuplicateIds/
-      --id-generator-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/fuzzy_id_generator.json
-      --output-path {session}/scratch
-      --executor xenna
-      --input-filetype jsonl
-      --output-filetype parquet
-      --id-field _curator_dedup_id
-      --duplicate-id-field _curator_dedup_id
-      --blocksize 1GiB
-      --use-initial-tasks
-    timeout_s: 7200
-    ray:
-      num_cpus: 32
-      num_gpus: 0
-      enable_object_spilling: false
-
-  # Xenna executor with curator dedup IDs
-  - name: removal_curator_dedup_id_xenna_1gb_use_file_partitioning
-    script: removal_benchmark.py
-    args: >-
-      --input-path {dataset:cleaned_cc,jsonl}
-      --ids-to-remove-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/FuzzyDuplicateIds/
-      --id-generator-path /raid/adattagupta/NeMo-Curator/ray-curator/ray_curator/fuzzy_dedup_output/fuzzy_id_generator.json
-      --output-path {session}/scratch
-      --executor xenna
-      --input-filetype jsonl
-      --output-filetype parquet
-      --id-field _curator_dedup_id
-      --duplicate-id-field _curator_dedup_id
-      --blocksize 1GiB
-    timeout_s: 7200
-    ray:
-      num_cpus: 32
+      num_cpus: 64
       num_gpus: 0
       enable_object_spilling: false

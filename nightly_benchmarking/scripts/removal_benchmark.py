@@ -34,6 +34,7 @@ def run_removal_benchmark(  # noqa: PLR0913
     id_generator_path: str | None = None,
     use_initial_tasks: bool = False,
     limit: int | None = None,
+    use_ray_data_settings: bool = False,
 ) -> dict[str, Any]:
     """Run the removal benchmark and collect comprehensive metrics."""
 
@@ -42,6 +43,11 @@ def run_removal_benchmark(  # noqa: PLR0913
         from nemo_curator.backends.experimental.ray_data import RayDataExecutor
 
         executor = RayDataExecutor()
+        if use_ray_data_settings:
+            from ray.data import DataContext
+
+            DataContext.get_current().target_max_block_size = 1
+
     elif executor_name == "xenna":
         from nemo_curator.backends.xenna import XennaExecutor
 
@@ -180,6 +186,7 @@ def main() -> int:
         action="store_true",
         help="If set, pre-compute initial FileGroupTasks via FilePartitioningStage and pass to workflow",
     )
+    parser.add_argument("--use-ray-data-settings", action="store_true", help="If set, use ray data settings")
     parser.add_argument("--limit", type=int, default=None, help="Limit the number of tasks to process")
 
     args = parser.parse_args()
@@ -202,6 +209,7 @@ def main() -> int:
             id_generator_path=args.id_generator_path,
             use_initial_tasks=args.use_initial_tasks,
             limit=args.limit,
+            use_ray_data_settings=args.use_ray_data_settings,
         )
 
     except Exception as e:  # noqa: BLE001
