@@ -171,6 +171,7 @@ def shared_ray_cluster(tmp_path_factory: pytest.TempPathFactory, pytestconfig: p
     logger.info(f"Running Ray command: {' '.join(cmd_to_run)}")
 
     # Use explicit path to ray command for security
+    os.environ["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "0"
     ray_process = subprocess.Popen(cmd_to_run, shell=False)  # noqa: S603
     logger.info(f"Started Ray process: {ray_process.pid}")
 
