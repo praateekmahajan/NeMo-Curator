@@ -37,7 +37,7 @@ class EmbeddingModelStage(ModelStage):
         embedding_field: str = "embeddings",
         pooling: Literal["mean_pooling", "last_token"] = "mean_pooling",
         hf_token: str | None = None,
-        model_inference_batch_size: int = 256,
+        model_inference_batch_size: int = 1024,
         has_seq_order: bool = True,
         padding_side: Literal["left", "right"] = "right",
         autocast: bool = True,
