@@ -151,6 +151,12 @@ class ModelStage(ProcessingStage[DocumentBatch, DocumentBatch]):
         msg = "Subclasses must implement this method"
         raise NotImplementedError(msg)
 
+    def _model_forward(self, model_input_batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        if self.unpack_inference_batch:
+            return self.model(**model_input_batch)
+        else:
+            return self.model(model_input_batch)
+
     def process(self, batch: DocumentBatch) -> DocumentBatch:
         df_cpu = batch.to_pandas()
 
@@ -160,14 +166,9 @@ class ModelStage(ProcessingStage[DocumentBatch, DocumentBatch]):
             with torch.no_grad():
                 if self.autocast:
                     with torch.autocast(device_type="cuda"):
-                        if self.unpack_inference_batch:
-                            outputs = self.model(**model_input_batch)
-                        else:
-                            outputs = self.model(model_input_batch)
-                elif self.unpack_inference_batch:
-                    outputs = self.model(**model_input_batch)
+                        outputs = self._model_forward(model_input_batch)
                 else:
-                    outputs = self.model(model_input_batch)
+                    outputs = self._model_forward(model_input_batch)
 
             processed_output = self.process_model_output(outputs, model_input_batch)
             del model_input_batch
