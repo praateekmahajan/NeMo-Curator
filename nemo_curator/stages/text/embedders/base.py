@@ -107,7 +107,7 @@ class EmbeddingCreatorStage(CompositeStage[DocumentBatch, DocumentBatch]):
     max_seq_length: int | None = None
     padding_side: Literal["left", "right"] = "right"
     embedding_pooling: Literal["mean_pooling", "last_token"] = "mean_pooling"
-    model_inference_batch_size: int = 256
+    model_inference_batch_size: int = 1024
     autocast: bool = True
     sort_by_length: bool = True
     hf_token: str | None = None
