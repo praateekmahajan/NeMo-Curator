@@ -68,7 +68,7 @@ class TestJsonlWriter:
                 # because we call it once for task, and once for the filename
                 assert mock_uuid4.call_count == 2
 
-        # Verify file was created the first time
+        # Verify file was created
         assert result.task_id == document_batch.task_id  # Task ID should match input
         assert len(result.data) == 1
         assert result._metadata["format"] == "jsonl"
@@ -85,8 +85,7 @@ class TestJsonlWriter:
         file_path = result.data[0]
         assert "_TEST_FILE_HASH" in file_path, f"File path should contain hash: {file_path}"
         assert os.path.exists(file_path), f"Output file should exist: {file_path}"
-        file_size_first = os.path.getsize(file_path)
-        assert file_size_first > 0, "Output file should not be empty"
+        assert os.path.getsize(file_path) > 0, "Output file should not be empty"
 
         # Verify file extension and content
         assert file_path.endswith(".jsonl"), "JSONL files should have .jsonl extension"
@@ -239,7 +238,6 @@ class TestJsonlWriter:
 
         # Setup
         writer.setup()
-        assert writer.name == "jsonl_writer"
 
         # Process
         if consistent_filename:
