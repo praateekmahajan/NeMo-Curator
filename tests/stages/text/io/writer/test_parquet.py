@@ -247,7 +247,7 @@ class TestParquetWriter:
 
         assert filesize_1 == filesize_2, "File size should be the same when written twice"
         assert file_modification_time_1 < file_modification_time_2, (
-            "File modification time should should be newer than the first write"
+            "File modification time should be newer than the first write"
         )
 
         pd.testing.assert_frame_equal(pd.read_parquet(result1.data[0]), pd.read_parquet(result2.data[0]))
