@@ -219,7 +219,7 @@ class TestParquetWriter:
         consistent_filename: bool,
         tmpdir: str,
     ):
-        """Test ParquetWriter with different data types."""
+        """Test that ParquetWriter overwrites existing files when writing to the same path."""
         # Create writer with specific output directory for this test
         output_dir = os.path.join(tmpdir, f"jsonl_{pandas_document_batch.task_id}")
         writer = ParquetWriter(path=output_dir)
