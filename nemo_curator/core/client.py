@@ -127,6 +127,8 @@ class RayClient:
         if self.ray_process:
             self.ray_process.kill()
             self.ray_process.wait()
+            # reset the ray address
+            os.environ.pop("RAY_ADDRESS", None)
             # Currently there is no good way of stopping a particular Ray cluster. https://github.com/ray-project/ray/issues/54989
             # We kill the Ray GCS process to stop the cluster, but still we have some Ray processes running.
             msg = "NeMo Curator has stopped the Ray cluster it started by killing the Ray GCS process. "
