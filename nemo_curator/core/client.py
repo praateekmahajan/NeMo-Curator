@@ -14,6 +14,7 @@
 
 import atexit
 import os
+import socket
 import subprocess
 from dataclasses import dataclass
 
@@ -120,6 +121,9 @@ class RayClient:
                 self.num_cpus,
                 self.enable_object_spilling,
             )
+            # Set environment variable for RAY_ADDRESS
+            ip_address = socket.gethostbyname(socket.gethostname())
+            os.environ["RAY_ADDRESS"] = f"{ip_address}:{self.ray_port}"
             # Register atexit handler only when we have a ray process
             atexit.register(self.stop)
 
@@ -127,7 +131,7 @@ class RayClient:
         if self.ray_process:
             self.ray_process.kill()
             self.ray_process.wait()
-            # reset the ray address
+            # Reset the environment variable for RAY_ADDRESS
             os.environ.pop("RAY_ADDRESS", None)
             # Currently there is no good way of stopping a particular Ray cluster. https://github.com/ray-project/ray/issues/54989
             # We kill the Ray GCS process to stop the cluster, but still we have some Ray processes running.

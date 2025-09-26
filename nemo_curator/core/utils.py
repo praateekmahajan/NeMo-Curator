@@ -122,5 +122,4 @@ def init_cluster(  # noqa: PLR0913
 
     proc = subprocess.Popen(ray_command, shell=False)  # noqa: S603
     logger.info(f"Ray start command: {' '.join(ray_command)}")
-    os.environ["RAY_ADDRESS"] = f"{ip_address}:{ray_port}"
     return proc
