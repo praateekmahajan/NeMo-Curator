@@ -109,7 +109,7 @@ class RayClient:
                 self.ray_client_server_port,
                 get_next_free_port=(self.ray_client_server_port == DEFAULT_RAY_CLIENT_SERVER_PORT),
             )
-
+            ip_address = socket.gethostbyname(socket.gethostname())
             self.ray_process = init_cluster(
                 self.ray_port,
                 self.ray_temp_dir,
@@ -120,9 +120,11 @@ class RayClient:
                 self.num_gpus,
                 self.num_cpus,
                 self.enable_object_spilling,
+                block=True,
+                ip_address=ip_address,
             )
             # Set environment variable for RAY_ADDRESS
-            ip_address = socket.gethostbyname(socket.gethostname())
+
             os.environ["RAY_ADDRESS"] = f"{ip_address}:{self.ray_port}"
             # Register atexit handler only when we have a ray process
             atexit.register(self.stop)
