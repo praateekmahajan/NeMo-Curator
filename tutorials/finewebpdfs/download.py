@@ -10,13 +10,13 @@ Pipeline steps:
 """
 
 import argparse
-import json
 import os
 import pickle
 import subprocess
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlparse
 
+import pandas as pd
 from loguru import logger
 from warcio.archiveiterator import ArchiveIterator
 
@@ -42,17 +42,21 @@ class FinePDFsURLGenerator(URLGenerator):
         self.streaming = streaming
 
     def generate_urls(self) -> list[str]:
-        with open("/raid/praateekm/NeMo-Curator/finepdfs.jsonl") as f:
-            dataset = [json.loads(line) for line in f]
+        dataset = pd.read_json("/raid/praateekm/NeMo-Curator/finepdfs.jsonl", lines=True)
 
         urls: list[str] = []
+        skipped_index_files_count = skipped_existing_files_count = 0
         replace_prefix = ("s3://commoncrawl", "https://data.commoncrawl.org")
-        for row in dataset:  # type: ignore[reportTypedDictNotRequiredAccess]
+        for _, row in dataset.iterrows():
             file_path: str = row["file_path"]
             offset_val: int = int(row["offset"])  # ensure int for naming
 
             # Skip parquet index files - only process actual WARC files
             if file_path.endswith(".parquet") or "/cc-index/table/" in file_path:
+                skipped_index_files_count += 1
+                logger.debug(
+                    f"Skipping {file_path} ({skipped_index_files_count:,} total) because it is a parquet index file"
+                )
                 continue
 
             # Replace S3 with HTTPS
@@ -64,6 +68,10 @@ class FinePDFsURLGenerator(URLGenerator):
             expected_pdf_name = f"{path_part}-startpos-{offset_val}_{offset_val}.pdf"
             expected_pdf_path = os.path.join(self.output_dir, expected_pdf_name)
             if os.path.exists(expected_pdf_path):
+                skipped_existing_files_count += 1
+                logger.debug(
+                    f"Skipping {expected_pdf_path} ({skipped_existing_files_count:,} total) because it already exists"
+                )
                 continue
 
             # Encode offset in URL fragment so it flows in task metadata as `source_url`
