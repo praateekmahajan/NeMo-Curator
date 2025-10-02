@@ -43,21 +43,22 @@ class FinePDFsURLGenerator(URLGenerator):
 
     def generate_urls(self) -> list[str]:
         dataset = pd.read_json("/raid/praateekm/NeMo-Curator/finepdfs.jsonl", lines=True)
+        num_rows = len(dataset)
+        # remove rows with .parquet or /cc-index/table/
+        dataset = dataset[
+            ~dataset["file_path"].str.endswith(".parquet") & ~dataset["file_path"].str.contains("/cc-index/table/")
+        ]
+        num_rows_after_filtering = len(dataset)
+        logger.debug(
+            f"Filtered from {num_rows:,} rows to {num_rows_after_filtering:,} rows because they are parquet index files or cc-index table files"
+        )
 
         urls: list[str] = []
-        skipped_index_files_count = skipped_existing_files_count = 0
+        skipped_existing_files_count = 0
         replace_prefix = ("s3://commoncrawl", "https://data.commoncrawl.org")
         for _, row in dataset.iterrows():
             file_path: str = row["file_path"]
             offset_val: int = int(row["offset"])  # ensure int for naming
-
-            # Skip parquet index files - only process actual WARC files
-            if file_path.endswith(".parquet") or "/cc-index/table/" in file_path:
-                skipped_index_files_count += 1
-                logger.debug(
-                    f"Skipping {file_path} ({skipped_index_files_count:,} total) because it is a parquet index file"
-                )
-                continue
 
             # Replace S3 with HTTPS
             if file_path.startswith(replace_prefix[0]):
@@ -239,7 +240,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="FinePDFs Common Crawl PDF downloader tutorial")
     parser.add_argument("--download-dir", type=str, required=True, help="Directory to store downloaded WARC files")
     parser.add_argument("--output-dir", type=str, required=True, help="Directory to store extracted PDF files")
-    parser.add_argument("--limit", type=int, default=10, help="Limit number of URLs to process")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of URLs to process")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging for downloads")
     args = parser.parse_args()
 
