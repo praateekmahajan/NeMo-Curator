@@ -93,3 +93,22 @@ def merge_executor_configs(base_config: dict | None, override_config: dict | Non
             merged_config[key] = value
 
     return merged_config
+
+
+def warn_on_env_var_override(existing_config: dict | None, merged_config: dict | None) -> None:
+    existing_env_vars = (existing_config or {}).get("runtime_env", {}).get("env_vars", {})
+    merged_env_vars = (merged_config or {}).get("runtime_env", {}).get("env_vars", {})
+    if not existing_env_vars or not merged_env_vars:
+        return
+
+    overridden_keys = sorted(
+        key
+        for key in existing_env_vars.keys() & merged_env_vars.keys()
+        if existing_env_vars[key] != merged_env_vars[key]
+    )
+    if overridden_keys:
+        logger.warning(
+            "Merged executor configuration overrides env_vars %s from the supplied executor. "
+            "Update the executor configuration before running if this is unintended.",
+            overridden_keys,
+        )
