@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -34,14 +36,20 @@ if TYPE_CHECKING:
     from nemo_curator.tasks import Task
 
 
-@pytest.fixture
-def reset_head_node_cache() -> None:
+@contextmanager
+def _reset_head_node_cache_context() -> Iterator[None]:
     original_value = utils._HEAD_NODE_ID_CACHE
     utils._HEAD_NODE_ID_CACHE = None
     try:
         yield
     finally:
         utils._HEAD_NODE_ID_CACHE = original_value
+
+
+@pytest.fixture
+def reset_head_node_cache() -> Iterator[None]:
+    with _reset_head_node_cache_context():
+        yield
 
 
 class TestExecuteSetupOnNode:

@@ -226,10 +226,10 @@ class SemanticDeduplicationWorkflow:
 
     def _run_kmeans_stage(self, kmeans_executor: RayActorPoolExecutor) -> list[Any]:
         """Run K-means clustering stage (always uses RayActorPoolExecutor)."""
-        logger.info("Starting K-means clustering stage (RayActorPoolExecutor)...")
         if not isinstance(kmeans_executor, RayActorPoolExecutor):
             msg = "K-means executor must be a RayActorPoolExecutor"
             raise TypeError(msg)
+        logger.info("Starting K-means clustering stage (RayActorPoolExecutor)...")
 
         pipeline = Pipeline(
             name="semantic_dedup_kmeans", description="K-means clustering stage of semantic deduplication"
