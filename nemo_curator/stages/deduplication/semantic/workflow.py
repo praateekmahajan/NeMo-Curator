@@ -224,9 +224,12 @@ class SemanticDeduplicationWorkflow:
             if self.eps is not None:
                 create_or_overwrite_dir(self.duplicates_output_path, storage_options=storage_options)
 
-    def _run_kmeans_stage(self) -> list[Any]:
+    def _run_kmeans_stage(self, kmeans_executor: RayActorPoolExecutor) -> list[Any]:
         """Run K-means clustering stage (always uses RayActorPoolExecutor)."""
         logger.info("Starting K-means clustering stage (RayActorPoolExecutor)...")
+        if not isinstance(kmeans_executor, RayActorPoolExecutor):
+            msg = "K-means executor must be a RayActorPoolExecutor"
+            raise TypeError(msg)
 
         pipeline = Pipeline(
             name="semantic_dedup_kmeans", description="K-means clustering stage of semantic deduplication"
@@ -255,9 +258,7 @@ class SemanticDeduplicationWorkflow:
         )
         pipeline.add_stage(kmeans_stage)
 
-        # Always use RayActorPoolExecutor for K-means
-        executor = RayActorPoolExecutor()
-        return pipeline.run(executor)
+        return pipeline.run(kmeans_executor)
 
     def _run_pairwise_stage(self, pairwise_executor: BaseExecutor | None = None) -> list[Any]:
         """Run pairwise similarity + duplicate identification stage."""
@@ -347,9 +348,9 @@ class SemanticDeduplicationWorkflow:
             self._setup_directories()
             self._log_configuration(pairwise_executor)
 
-            # Stage 1: K-means clustering (always RayActorPoolExecutor)
+            # Stage 1: K-means clustering
             kmeans_start_time = time.time()
-            kmeans_results = self._run_kmeans_stage()
+            kmeans_results = self._run_kmeans_stage(kmeans_executor)
             kmeans_end_time = time.time()
             kmeans_time = kmeans_end_time - kmeans_start_time
 

@@ -16,10 +16,12 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
 import ray
 from pytest import LogCaptureFixture
 
 from nemo_curator.backends.base import NodeInfo, WorkerMetadata
+from nemo_curator.backends.experimental import utils
 from nemo_curator.backends.experimental.utils import (
     RayStageSpecKeys,
     execute_setup_on_node,
@@ -30,6 +32,16 @@ from nemo_curator.stages.resources import Resources
 
 if TYPE_CHECKING:
     from nemo_curator.tasks import Task
+
+
+@pytest.fixture
+def reset_head_node_cache() -> None:
+    original_value = utils._HEAD_NODE_ID_CACHE
+    utils._HEAD_NODE_ID_CACHE = None
+    try:
+        yield
+    finally:
+        utils._HEAD_NODE_ID_CACHE = original_value
 
 
 class TestExecuteSetupOnNode:
@@ -103,9 +115,9 @@ class TestExecuteSetupOnNode:
         shared_ray_client: None,  # noqa: ARG002
         tmp_path: Path,
         caplog: LogCaptureFixture,  # noqa: ARG002
+        reset_head_node_cache: None,  # noqa: ARG002
     ):
         """Test execute_setup_on_node with ignore_head_node=True to skip head node."""
-        from nemo_curator.backends.experimental import utils
 
         class MockStage1(ProcessingStage):
             _name = "mock_stage_ignore_head"
@@ -140,10 +152,10 @@ class TestExecuteSetupOnNode:
                 expected_head_node_id = node["NodeID"]
                 break
 
-        if expected_head_node_id:
-            assert expected_head_node_id == utils._HEAD_NODE_ID_CACHE, (
-                f"_HEAD_NODE_ID_CACHE should be {expected_head_node_id}, got {utils._HEAD_NODE_ID_CACHE}"
-            )
+        assert expected_head_node_id is not None, "Expected head node ID should be set"
+        assert expected_head_node_id == utils._HEAD_NODE_ID_CACHE, (
+            f"_HEAD_NODE_ID_CACHE should be {expected_head_node_id}, got {utils._HEAD_NODE_ID_CACHE}"
+        )
 
         # Check the files written to the temp directory
         stage_files = list(tmp_path.glob(f"{stage.name}_*.txt"))
@@ -154,17 +166,15 @@ class TestExecuteSetupOnNode:
 
 
 class TestGetHeadNodeId:
-    """Test class for get_available_cpu_gpu_resources function."""
-
     def test_lazy_evaluation(
         self,
         shared_ray_client: None,  # noqa: ARG002
+        reset_head_node_cache: None,  # noqa: ARG002
     ):
         """Test that get_head_node_id uses lazy evaluation and caching."""
-        from nemo_curator.backends.experimental import utils
 
-        # Clear the cache
-        utils._HEAD_NODE_ID_CACHE = None
+        # Cache should start cleared by fixture
+        assert utils._HEAD_NODE_ID_CACHE is None, "Cache should be cleared before test"
 
         # First call should compute and cache
         head_node_id_1 = get_head_node_id()

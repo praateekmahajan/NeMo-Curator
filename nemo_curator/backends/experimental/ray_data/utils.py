@@ -34,7 +34,7 @@ def calculate_concurrency_for_actors_for_stage(
 
     # Get available resources from Ray
     available_cpus, available_gpus = get_available_cpu_gpu_resources(
-        init_and_shudown=False, ignore_head_node=ignore_head_node
+        init_and_shutdown=False, ignore_head_node=ignore_head_node
     )
     # Calculate based on CPU and GPU requirements
     max_cpu_actors = float("inf")

@@ -62,11 +62,16 @@ def get_worker_metadata_and_node_id() -> tuple[NodeInfo, WorkerMetadata]:
     return NodeInfo(node_id=ray_context.get_node_id()), WorkerMetadata(worker_id=ray_context.get_worker_id())
 
 
-def get_available_cpu_gpu_resources(init_and_shudown: bool = False, ignore_head_node: bool = False) -> tuple[int, int]:
+def get_available_cpu_gpu_resources(
+    init_and_shutdown: bool = False, ignore_head_node: bool = False
+) -> tuple[int, int]:
     """Get available CPU and GPU resources from Ray."""
-    if init_and_shudown:
+    if init_and_shutdown:
         ray.init(ignore_reinit_error=True)
     time.sleep(0.2)  # ray.available_resources() returns might have a lag
+    # available resources can be different from total resources, however curator assumes
+    # entire cluster is available for use and only one pipeline is being run at a time.
+    # therefore available resources should match total resources.
     available_resources = ray.available_resources()
     available_cpus = available_resources.get("CPU", 0)
     available_gpus = available_resources.get("GPU", 0)
@@ -83,7 +88,7 @@ def get_available_cpu_gpu_resources(init_and_shudown: bool = False, ignore_head_
             available_gpus = max(0, available_gpus - head_node_gpus)
         else:
             logger.warning("ignore_head_node=True but no head node found in the cluster")
-    if init_and_shudown:
+    if init_and_shutdown:
         ray.shutdown()
     return (available_cpus, available_gpus)
 
@@ -96,20 +101,18 @@ def _setup_stage_on_node(stage: ProcessingStage, node_info: NodeInfo, worker_met
 
 def execute_setup_on_node(stages: list[ProcessingStage], ignore_head_node: bool = False) -> None:
     """Execute setup on node for a stage."""
-    global _HEAD_NODE_ID_CACHE  # noqa: PLW0603
+    head_node_id = get_head_node_id()
     ray_tasks = []
     for node in ray.nodes():
         node_id = node["NodeID"]
-        is_head_node = "node:__internal_head__" in node.get("Resources", {})
+        is_head_node = node_id == head_node_id or "node:__internal_head__" in node.get("Resources", {})
         node_info = NodeInfo(node_id=node_id)
         worker_metadata = WorkerMetadata(worker_id="", allocation=None)
-        if is_head_node:
-            _HEAD_NODE_ID_CACHE = node_id
         if ignore_head_node and is_head_node:
             logger.info(f"Ignoring setup on head node {node_id}")
             continue
-        else:
-            logger.info(f"Executing setup on node {node_id} for {len(stages)} stages")
+
+        logger.info(f"Executing setup on node {node_id} for {len(stages)} stages")
 
         for stage in stages:
             ray_tasks.append(
