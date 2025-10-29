@@ -66,7 +66,7 @@ def get_available_cpu_gpu_resources(init_and_shudown: bool = False, ignore_head_
     """Get available CPU and GPU resources from Ray."""
     if init_and_shudown:
         ray.init(ignore_reinit_error=True)
-    time.sleep(0.2)
+    time.sleep(0.2)  # ray.available_resources() returns might have a lag
     available_resources = ray.available_resources()
     available_cpus = available_resources.get("CPU", 0)
     available_gpus = available_resources.get("GPU", 0)
