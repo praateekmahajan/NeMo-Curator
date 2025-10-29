@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 import ray
 from loguru import logger
 
-from nemo_curator.backends.experimental.utils import HEAD_NODE_ID, get_available_cpu_gpu_resources
+from nemo_curator.backends.experimental.utils import get_available_cpu_gpu_resources
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -40,15 +40,7 @@ def calculate_optimal_actors_for_stage(
 ) -> int:
     """Calculate optimal number of actors for a stage."""
     # Get available resources (not total cluster resources)
-    available_cpus, available_gpus = get_available_cpu_gpu_resources()
-    if ignore_head_node:
-        total_resources = ray.state.total_resources_per_node().get(HEAD_NODE_ID, {})
-        head_node_cpus = total_resources.get("CPU", 0)
-        head_node_gpus = total_resources.get("GPU", 0)
-        logger.info(f"Ignoring head node {HEAD_NODE_ID} for resource calculation")
-        available_cpus = max(0, available_cpus - head_node_cpus)
-        available_gpus = max(0, available_gpus - head_node_gpus)
-
+    available_cpus, available_gpus = get_available_cpu_gpu_resources(ignore_head_node=ignore_head_node)
     # Reserve resources for system overhead
     available_cpus = max(0, available_cpus - reserved_cpus)
     available_gpus = max(0, available_gpus - reserved_gpus)
