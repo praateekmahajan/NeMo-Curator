@@ -439,10 +439,10 @@ class TextSemanticDeduplicationWorkflow:
         if batch_executor is None:
             from nemo_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
 
-            kmeans_executor = RayActorPoolExecutor()
+            batch_executor = RayActorPoolExecutor()
 
         # Expose executors as attributes for logging and downstream access
-        self.kmeans_executor = kmeans_executor
+        self.kmeans_executor = batch_executor
         self.embedding_executor = embedding_executor
         self.pairwise_executor = pairwise_executor
         self.removal_executor = removal_executor
@@ -489,7 +489,7 @@ class TextSemanticDeduplicationWorkflow:
             # Stage 2: Semantic deduplication
             semantic_start_time = time.time()
             semantic_results = self._run_semantic_deduplication(
-                kmeans_executor=kmeans_executor, pairwise_executor=pairwise_executor
+                kmeans_executor=self.kmeans_executor, pairwise_executor=self.pairwise_executor
             )
             semantic_end_time = time.time()
             semantic_time = semantic_end_time - semantic_start_time
