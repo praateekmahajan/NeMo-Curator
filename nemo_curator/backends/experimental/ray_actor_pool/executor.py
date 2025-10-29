@@ -379,6 +379,7 @@ class RayActorPoolExecutor(BaseExecutor):
                 len(original_input),
                 reserved_cpus=self.config.get("reserved_cpus", 0.0),
                 reserved_gpus=self.config.get("reserved_gpus", 0.0),
+                ignore_head_node=self.ignore_head_node,
             )
             logger.info(
                 f" {stage} - Creating {num_actors} actors (CPUs: {stage.resources.cpus}, GPUs: {stage.resources.gpus})"

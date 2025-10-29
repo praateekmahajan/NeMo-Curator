@@ -39,9 +39,10 @@ class RayDataExecutor(BaseExecutor):
     4. Returns final results as a list of tasks
     """
 
-    def __init__(self, config: dict[str, Any] | None = None):
+    def __init__(self, config: dict[str, Any] | None = None, ignore_head_node: bool = False):
         super().__init__(config)
         logger.warning("Ray Data executor is experimental and might not work as expected.")
+        self.ignore_head_node = ignore_head_node
 
     def execute(self, stages: list["ProcessingStage"], initial_tasks: list[Task] | None = None) -> list[Task]:
         """Execute the pipeline stages using Ray Data.
@@ -73,7 +74,7 @@ class RayDataExecutor(BaseExecutor):
             current_dataset = self._tasks_to_dataset(tasks)
 
             # Execute setup on node for all stages
-            execute_setup_on_node(stages)
+            execute_setup_on_node(stages, ignore_head_node=self.ignore_head_node)
             logger.info(f"Setup on node complete for all stages. Starting Ray Data pipeline with {len(stages)} stages")
 
             # Process through each stage
