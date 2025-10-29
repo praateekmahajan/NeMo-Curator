@@ -18,6 +18,7 @@ from typing import Any, Literal
 from loguru import logger
 
 from nemo_curator.backends.experimental.ray_actor_pool import RayActorPoolExecutor
+from nemo_curator.backends.utils import merge_executor_configs
 from nemo_curator.pipeline import Pipeline
 from nemo_curator.stages.deduplication.fuzzy.buckets_to_edges import BucketsToEdgesStage
 from nemo_curator.stages.deduplication.fuzzy.connected_components import ConnectedComponentsStage
@@ -266,7 +267,9 @@ class FuzzyDeduplicationWorkflow:
             msg = "input_path to the dataset must be provided if initial_tasks are not provided manually."
             raise ValueError(msg)
 
-    def run(self, initial_tasks: list[FileGroupTask] | None = None) -> None:
+    def run(
+        self, initial_tasks: list[FileGroupTask] | None = None, executor: RayActorPoolExecutor | None = None
+    ) -> None:
         """Run the deduplication pipeline.
 
         Args:
@@ -275,7 +278,11 @@ class FuzzyDeduplicationWorkflow:
             If not provided, the pipeline will generate the input tasks based on the input_dir and input_file_extensions.
         """
         self._validate_initial_tasks(initial_tasks)
-        executor = RayActorPoolExecutor(config=self.executor_config)
+        if executor is None:
+            executor = RayActorPoolExecutor(config=self.executor_config)
+        else:
+            executor.config = merge_executor_configs(executor.config, self.executor_config)
+
         try:
             create_id_generator_actor()
         except ValueError:

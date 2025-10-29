@@ -325,17 +325,21 @@ class SemanticDeduplicationWorkflow:
         logger.info(f"Random state: {self.random_state}")
         logger.info("=" * 60)
 
-    def run(self, pairwise_executor: BaseExecutor | None = None) -> dict[str, Any]:
+    def run(
+        self, kmeans_executor: BaseExecutor | None = None, pairwise_executor: BaseExecutor | None = None
+    ) -> dict[str, Any]:
         """
         Run the complete semantic deduplication pipeline.
 
         Args:
+            kmeans_executor: Executor for kmeans stage. Defaults to RayActorPoolExecutor().
             pairwise_executor: Executor for pairwise stage. Defaults to XennaExecutor().
 
         Returns:
             Dictionary with results and timing information
         """
         total_start_time = time.time()
+        kmeans_executor = kmeans_executor or RayActorPoolExecutor()
         pairwise_executor = pairwise_executor or XennaExecutor()
 
         try:
