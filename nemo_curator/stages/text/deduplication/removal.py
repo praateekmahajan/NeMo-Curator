@@ -76,9 +76,7 @@ class TextDuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
         # Filter the parquet files for IDs to remove within this range
         read_dupes_t0 = time.perf_counter()
 
-        # we use pq.read_table instead of pd.read_parquet since ids_to_remove_path is a directory
-        # and it might error out when the directory is a cloud path
-        removal_table = pd.read_parquet(
+        removal_df = pd.read_parquet(
             self.ids_to_remove_path,
             filters=[(self.duplicate_id_field, ">=", min_id), (self.duplicate_id_field, "<=", max_id)],
             columns=[self.duplicate_id_field],
@@ -89,7 +87,7 @@ class TextDuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
 
         # Filter out documents with IDs in the removal set using pandas
         time_to_remove_t0 = time.perf_counter()
-        removal_ids = set(removal_table[self.duplicate_id_field].tolist())
+        removal_ids = set(removal_df[self.duplicate_id_field].tolist())
         df = df[~df[self.id_field].isin(removal_ids)]
         removal_ids_time = time.perf_counter() - time_to_remove_t0
         self._log_metrics(

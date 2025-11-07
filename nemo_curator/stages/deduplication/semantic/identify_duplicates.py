@@ -89,7 +89,8 @@ class IdentifyDuplicatesStage(ProcessingStage[FileGroupTask, FileGroupTask]):
 
         all_files = [file for task in tasks for file in task.data]
         # Read using filters
-
+        # We read file by file since list[files] when files are remote urls can fail
+        # See https://github.com/pandas-dev/pandas/issues/62922
         df: pd.DataFrame = pd.concat(
             [
                 pd.read_parquet(
