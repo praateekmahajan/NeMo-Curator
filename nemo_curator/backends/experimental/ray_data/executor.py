@@ -40,9 +40,8 @@ class RayDataExecutor(BaseExecutor):
     """
 
     def __init__(self, config: dict[str, Any] | None = None, ignore_head_node: bool = False):
-        super().__init__(config)
+        super().__init__(config, ignore_head_node)
         logger.warning("Ray Data executor is experimental and might not work as expected.")
-        self.ignore_head_node = ignore_head_node
 
     def execute(self, stages: list["ProcessingStage"], initial_tasks: list[Task] | None = None) -> list[Task]:
         """Execute the pipeline stages using Ray Data.
