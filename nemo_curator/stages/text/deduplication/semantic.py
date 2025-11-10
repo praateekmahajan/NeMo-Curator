@@ -282,16 +282,11 @@ class TextSemanticDeduplicationWorkflow:
         pipeline.add_stage(embedding_stage)
 
         # Writer stage
-        if self.output_filetype == "parquet":
-            writer = ParquetWriter(
-                path=self.embeddings_path,
-                fields=[self.id_field, self.embedding_field] + (self.metadata_fields or []),
-                write_kwargs=self.cache_kwargs,
-            )
-        else:
-            msg = f"Output filetype {self.output_filetype} not supported yet"
-            raise NotImplementedError(msg)
-
+        writer = ParquetWriter(
+            path=self.embeddings_path,
+            fields=[self.id_field, self.embedding_field] + (self.metadata_fields or []),
+            write_kwargs=self.cache_kwargs,
+        )
         pipeline.add_stage(writer)
 
         return pipeline.run(executor)
