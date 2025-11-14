@@ -14,6 +14,7 @@
 
 import time
 from enum import Enum
+from typing import Any
 
 import ray
 from loguru import logger
@@ -24,6 +25,11 @@ from nemo_curator.stages.base import ProcessingStage
 
 # Global variable to cache head node ID
 _HEAD_NODE_ID_CACHE = None
+
+
+def is_head_node(node: dict[str, Any]) -> bool:
+    """Check if a node is the head node."""
+    return "node:__internal_head__" in node.get("Resources", {})
 
 
 def get_head_node_id() -> str | None:
@@ -39,7 +45,7 @@ def get_head_node_id() -> str | None:
 
     # Compute head node ID
     for node in ray.nodes():
-        if "node:__internal_head__" in node.get("Resources", {}):
+        if is_head_node(node):
             _HEAD_NODE_ID_CACHE = node["NodeID"]
             return _HEAD_NODE_ID_CACHE
 
@@ -105,10 +111,9 @@ def execute_setup_on_node(stages: list[ProcessingStage], ignore_head_node: bool 
     ray_tasks = []
     for node in ray.nodes():
         node_id = node["NodeID"]
-        is_head_node = node_id == head_node_id or "node:__internal_head__" in node.get("Resources", {})
         node_info = NodeInfo(node_id=node_id)
         worker_metadata = WorkerMetadata(worker_id="", allocation=None)
-        if ignore_head_node and is_head_node:
+        if ignore_head_node and node_id == head_node_id:
             logger.info(f"Ignoring setup on head node {node_id}")
             continue
 

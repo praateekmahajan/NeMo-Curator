@@ -44,7 +44,7 @@ class XennaExecutor(BaseExecutor):
                 - cpu_allocation_percentage: CPU allocation ratio (default: 0.95)
                 - autoscale_interval_s: Auto-scaling interval (default: 180)
             ignore_head_node (bool, optional): Whether to ignore the head node (default: False)
-                Not supported by XennaExecutor. Ignored if set to True.
+                Not supported by XennaExecutor. Raises an error if set to True.
         """
         super().__init__(config, ignore_head_node)
         if self.ignore_head_node:
