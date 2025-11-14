@@ -44,4 +44,4 @@ class JsonlWriter(BaseWriter):
 
         # Add any additional kwargs, allowing them to override defaults
         write_kwargs.update(self.write_kwargs)
-        df.to_json(file_path, **write_kwargs)
+        df.to_json(file_path, **write_kwargs)  # TODO: test this for cloud path

@@ -31,7 +31,6 @@ import pandas as pd
 from nemo_curator.stages.base import ProcessingStage
 from nemo_curator.stages.deduplication.id_generator import CURATOR_DEDUP_ID_STR
 from nemo_curator.tasks import DocumentBatch
-from nemo_curator.utils.file_utils import get_fs
 
 
 @dataclass
@@ -58,8 +57,6 @@ class TextDuplicatesRemovalStage(ProcessingStage[DocumentBatch, DocumentBatch]):
         super().__init__()
         self._name = "DuplicatesRemovalStage"
         self.read_kwargs = self.read_kwargs.copy() if self.read_kwargs else {}
-        # TODO : I think we can remove this
-        self.fs = get_fs(self.ids_to_remove_path, storage_options=self.read_kwargs.get("storage_options", {}))
 
     def process(self, task: DocumentBatch) -> DocumentBatch:
         """
